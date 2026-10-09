@@ -660,6 +660,54 @@ def _preparar_grupo(nombre, items):
     return {"nombre": nombre, "lista": items, "url_comun": url_comun}
 
 
+def _unir_por_primera_palabra(grupos):
+    """Une los sueltos con el grupo que comparte su primera palabra ('Avansis Nómina' -> 'Avansis')."""
+    def primera(nombre):
+        return nombre.split()[0] if nombre.split() else nombre
+
+    def resto(texto, prefijo):
+        return texto[len(prefijo):].strip(" ·") if texto.lower().startswith(prefijo.lower()) else texto
+
+    resultado = {}
+    sueltos = []
+    for nombre, items in grupos.items():
+        (resultado.__setitem__(nombre, items) if len(items) > 1 else sueltos.append((nombre, items[0])))
+
+    for nombre, it in sueltos:
+        clave = primera(nombre).lower()
+        destino = [g for g in resultado if primera(g).lower() == clave]
+        companeros = [n for n, _ in sueltos if primera(n).lower() == clave]
+        if len(destino) == 1 or (not destino and len(companeros) > 1):
+            nuevo = primera(destino[0] if destino else nombre)
+            if destino and destino[0] != nuevo:  # renombrar el grupo existente a la palabra común
+                anteriores = resultado.pop(destino[0])
+                sobrante = resto(destino[0], nuevo)
+                for x in anteriores:
+                    x["detalle"] = " · ".join(p for p in (sobrante, x["detalle"]) if p)
+                resultado[nuevo] = anteriores
+            it["detalle"] = resto(it["c"].servicio, nuevo) or it["c"].servicio
+            resultado.setdefault(nuevo, []).append(it)
+        else:
+            resultado.setdefault(nombre, []).append(it)
+
+    # Grupos hermanos pequeños ('Avansis Inventario', 'Avansis Nómina'…) -> un grupo con subtítulos
+    por_palabra = {}
+    for nombre in resultado:
+        por_palabra.setdefault(primera(nombre).lower(), []).append(nombre)
+    for nombres in por_palabra.values():
+        if len(nombres) < 2 or sum(len(resultado[n]) for n in nombres) > 20:
+            continue
+        nuevo = primera(nombres[0])
+        unidos = []
+        for n in nombres:
+            for x in resultado.pop(n):
+                sub = resto(n, nuevo)
+                x["detalle"] = sub if (sub and x["c"].usuario) else " · ".join(p for p in (sub, x["detalle"]) if p)
+                unidos.append(x)
+        resultado[nuevo] = unidos
+    return resultado
+
+
 def agrupar_credenciales(credenciales):
     """Categorías -> grupos -> credenciales, para mostrar la bóveda ordenada en lugar de una lista plana."""
     por_categoria = {}
@@ -675,6 +723,7 @@ def agrupar_credenciales(credenciales):
             grupos = {"General": items}
             for it in items:
                 it["detalle"] = it["c"].servicio
+        grupos = _unir_por_primera_palabra(grupos)
         normales = {g: items for g, items in grupos.items() if len(items) > 1}
         sueltos = [it for g, items in grupos.items() if len(items) == 1 for it in items]
         if sueltos:
