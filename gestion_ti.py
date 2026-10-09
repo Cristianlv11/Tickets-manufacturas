@@ -7,6 +7,7 @@ import csv
 import io
 import json
 import os
+import re
 import secrets
 from datetime import datetime, date, timedelta, timezone
 from typing import Optional
@@ -623,6 +624,74 @@ def registrar_acceso(db: Session, request: Request, user, accion, credencial=Non
     ))
 
 
+ICONOS_CATEGORIA = {
+    "Correo": "✉️", "Aplicativo": "🧩", "Equipo": "💻", "Cámara / CCTV": "📹", "Red / Wi-Fi": "📶",
+    "Hosting / Dominio": "🌐", "Software": "🗄️", "Otro": "🔑",
+}
+
+
+def _grupo_y_detalle(servicio: str):
+    """'Gmail · Producción' -> ('Gmail', 'Producción'); 'Equipo 1742 · Portátil' -> ('Equipo', '1742 · Portátil')."""
+    grupo, _, detalle = (servicio or "").partition(" · ")
+    base = re.sub(r"\s*\(?[\w-]*\d[\w-]*\)?", "", grupo).strip()
+    if base and base != grupo:
+        detalle = " · ".join(p for p in (grupo[len(base):].strip(), detalle) if p) if grupo.startswith(base) \
+            else " · ".join(p for p in (grupo, detalle) if p)
+        grupo = base
+    return grupo.strip(), (detalle or grupo).strip()
+
+
+def _preparar_grupo(nombre, items):
+    """Si el detalle se repite (p. ej. 'Comercial' en Gmail), se usa como subtítulo y cada fila muestra el usuario."""
+    detalles = [it["detalle"] for it in items]
+    con_subtitulos = len(set(detalles)) < len(detalles)
+    urls = {(it["c"].url or "") for it in items}
+    url_comun = urls.pop() if len(urls) == 1 else ""
+    if con_subtitulos:
+        items = sorted(items, key=lambda it: (it["detalle"].lower(), (it["c"].usuario or "").lower()))
+    anterior = None
+    for it in items:
+        c = it["c"]
+        it["subtitulo"] = it["detalle"] if con_subtitulos and it["detalle"] != anterior else ""
+        anterior = it["detalle"]
+        it["titulo"] = (c.usuario or it["detalle"]) if con_subtitulos else it["detalle"]
+        it["mostrar_usuario"] = bool(c.usuario) and it["titulo"] != c.usuario
+        it["mostrar_url"] = bool(c.url) and not url_comun
+    return {"nombre": nombre, "lista": items, "url_comun": url_comun}
+
+
+def agrupar_credenciales(credenciales):
+    """Categorías -> grupos -> credenciales, para mostrar la bóveda ordenada en lugar de una lista plana."""
+    por_categoria = {}
+    for c in credenciales:
+        grupo, detalle = _grupo_y_detalle(c.servicio)
+        por_categoria.setdefault(c.categoria or "Otro", {}).setdefault(grupo, []).append({"c": c, "detalle": detalle})
+
+    orden_cat = {nombre: i for i, nombre in enumerate(CATEGORIAS_CREDENCIAL)}
+    secciones = []
+    for categoria, grupos in por_categoria.items():
+        if sum(len(items) for items in grupos.values()) <= 6:  # categorías pequeñas: un solo bloque
+            items = [it for lst in grupos.values() for it in lst]
+            grupos = {"General": items}
+            for it in items:
+                it["detalle"] = it["c"].servicio
+        normales = {g: items for g, items in grupos.items() if len(items) > 1}
+        sueltos = [it for g, items in grupos.items() if len(items) == 1 for it in items]
+        if sueltos:
+            for it in sueltos:  # en el grupo "Otros" se muestra el nombre completo
+                it["detalle"] = it["c"].servicio
+            normales["Otros" if normales else "General"] = sorted(sueltos, key=lambda it: it["detalle"].lower())
+        lista = sorted(normales.items(), key=lambda kv: (kv[0] in ("Otros",), -len(kv[1]), kv[0].lower()))
+        secciones.append({
+            "nombre": categoria,
+            "icono": ICONOS_CATEGORIA.get(categoria, "🔑"),
+            "total": sum(len(items) for _, items in lista),
+            "grupos": [_preparar_grupo(g, items) for g, items in lista],
+        })
+    secciones.sort(key=lambda s: (orden_cat.get(s["nombre"], 99), s["nombre"]))
+    return secciones
+
+
 @router.get("/admin/boveda", response_class=HTMLResponse)
 def boveda_page(request: Request, error: str = "", user=Depends(get_current_admin), db: Session = Depends(get_db)):
     if not user:
@@ -633,12 +702,16 @@ def boveda_page(request: Request, error: str = "", user=Depends(get_current_admi
         "clave_por_defecto": verify_password(DEFAULT_ADMIN_PASSWORD, user.password_hash),
     }
     if contexto["configurada"] and boveda_desbloqueada(request, user):
+        credenciales = db.query(models.Credencial).order_by(models.Credencial.categoria, models.Credencial.servicio).all()
         contexto.update({
             "desbloqueada": True,
-            "credenciales": db.query(models.Credencial).order_by(models.Credencial.categoria, models.Credencial.servicio).all(),
+            "credenciales": credenciales,
+            "secciones": agrupar_credenciales(credenciales),
             "accesos": db.query(models.CredencialAcceso).order_by(models.CredencialAcceso.fecha.desc()).limit(60).all(),
             "equipos": {e.get("id"): e.get("nombre") for e in cargar_equipos(db)},
             "minutos": BOVEDA_MINUTOS,
+            "segundos_restantes": max(0, int(decode_token(request.cookies.get(BOVEDA_COOKIE, "")).get("exp", 0)
+                                             - datetime.now(timezone.utc).timestamp())),
         })
     return templates.TemplateResponse(request=request, name="ti_boveda.html", context=contexto)
 

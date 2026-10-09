@@ -3,136 +3,214 @@
 {% block title %}Bóveda de Contraseñas - TicketsApp{% endblock %}
 
 {% block content %}
-{% set campo = "border border-slate-200 rounded-xl px-3 py-2 text-sm w-full" %}
+{% set campo = "border border-slate-200 rounded-xl px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300" %}
 <div class="space-y-6">
-    <div class="bg-white rounded-3xl shadow-lg shadow-indigo-100/50 border border-indigo-50 p-6 sm:p-8">
-        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div>
-                <h2 class="text-3xl font-extrabold text-slate-800 tracking-tight">Bóveda de Contraseñas</h2>
-                <p class="text-sm text-slate-500 mt-1">Correos, software, aplicativos y cámaras. Las claves se guardan cifradas y cada consulta queda registrada.</p>
-            </div>
-            {% if desbloqueada %}
-            <form action="/admin/boveda/bloquear" method="POST" class="flex items-center gap-3">
-                <span class="text-xs text-slate-500">Se bloquea sola a los {{ minutos }} min</span>
-                <button class="bg-slate-800 hover:bg-slate-900 text-white font-bold py-2.5 px-4 rounded-xl text-sm">🔒 Bloquear ahora</button>
-            </form>
-            {% endif %}
-        </div>
-    </div>
 
     {% if not configurada %}
+    <div class="bg-white rounded-3xl shadow-lg shadow-indigo-100/50 border border-indigo-50 p-6 sm:p-8">
+        <h2 class="text-3xl font-extrabold text-slate-800 tracking-tight">Bóveda de Contraseñas</h2>
+    </div>
     <div class="bg-rose-50 border border-rose-200 text-rose-800 rounded-2xl p-5 text-sm">
         <b>La bóveda no está habilitada.</b> Falta la variable de entorno <code class="bg-white px-1.5 rounded">VAULT_KEY</code> en el servidor (Railway). Sin ella no se puede cifrar ni leer ninguna clave.
     </div>
 
     {% elif not desbloqueada %}
-    <div class="max-w-md mx-auto bg-white rounded-3xl shadow-lg shadow-indigo-100/50 border border-indigo-50 p-8 text-center">
-        <div class="text-5xl mb-3">🔐</div>
-        <h3 class="text-xl font-extrabold text-slate-800">Bóveda bloqueada</h3>
+    <div class="max-w-md mx-auto mt-8 bg-white rounded-3xl shadow-xl shadow-indigo-100/60 border border-indigo-50 p-8 text-center">
+        <div class="mx-auto w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-500 flex items-center justify-center text-3xl shadow-lg shadow-indigo-200">🔐</div>
+        <h2 class="text-2xl font-extrabold text-slate-800 mt-5">Bóveda de Contraseñas</h2>
+        <p class="text-sm text-slate-500 mt-1">Claves cifradas · cada consulta queda registrada</p>
         {% if clave_por_defecto or error == 'default' %}
-            <p class="text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded-xl p-3 mt-4">Su usuario todavía tiene la contraseña por defecto. Por seguridad, la bóveda no se abre hasta que la cambie.</p>
+            <p class="text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded-xl p-3 mt-5">Su usuario todavía tiene la contraseña por defecto. Por seguridad, la bóveda no se abre hasta que la cambie.</p>
             <a href="/admin/cuenta" class="inline-block mt-4 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 px-5 rounded-xl text-sm">Cambiar mi contraseña</a>
         {% else %}
-            <p class="text-sm text-slate-500 mt-2">Confirme su contraseña de la app para abrirla.</p>
-            {% if error == 'clave' %}<p class="text-sm text-rose-600 font-bold mt-3">Contraseña incorrecta. El intento quedó registrado.</p>{% endif %}
-            <form action="/admin/boveda/desbloquear" method="POST" class="mt-5 space-y-3">
-                <input type="password" name="password" autocomplete="current-password" placeholder="Contraseña de {{ user.username }}" class="{{ campo }}" required autofocus>
-                <button class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 rounded-xl text-sm">Desbloquear</button>
+            {% if error == 'clave' %}<p class="text-sm text-rose-600 font-bold mt-4">Contraseña incorrecta. El intento quedó registrado.</p>{% endif %}
+            <form action="/admin/boveda/desbloquear" method="POST" class="mt-6 space-y-3">
+                <input type="password" name="password" autocomplete="current-password" placeholder="Contraseña de {{ user.username }}" class="{{ campo }} text-center" required autofocus>
+                <button class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 rounded-xl text-sm shadow-md shadow-indigo-200">Desbloquear</button>
             </form>
         {% endif %}
     </div>
 
     {% else %}
-    <div class="bg-white rounded-3xl shadow-lg shadow-indigo-100/50 border border-indigo-50 p-4 sm:p-6">
-        <div class="flex flex-col sm:flex-row gap-3 mb-4">
-            <input id="buscar" type="search" placeholder="Buscar servicio, usuario o categoría…" class="{{ campo }} sm:max-w-sm">
-            <button onclick="abrirFormulario()" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-xl text-sm whitespace-nowrap">+ Nueva credencial</button>
-        </div>
-        <div class="overflow-x-auto rounded-2xl border border-slate-100">
-            <table class="min-w-full text-sm text-left">
-                <thead class="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider">
-                    <tr><th class="px-4 py-3">Categoría</th><th class="px-4 py-3">Servicio</th><th class="px-4 py-3">Usuario</th><th class="px-4 py-3">Contraseña</th><th class="px-4 py-3">Actualizada</th><th class="px-4 py-3"></th></tr>
-                </thead>
-                <tbody class="divide-y divide-slate-100">
-                {% for c in credenciales %}
-                    <tr class="fila-cred align-top" data-buscar="{{ (c.categoria ~ ' ' ~ c.servicio ~ ' ' ~ (c.usuario or '') ~ ' ' ~ (c.url or ''))|lower }}">
-                        <td class="px-4 py-3"><span class="px-2 py-0.5 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700">{{ c.categoria }}</span></td>
-                        <td class="px-4 py-3">
-                            <div class="font-bold text-slate-800">{{ c.servicio }}</div>
-                            {% if c.url %}<a href="{{ c.url if '://' in c.url else 'https://' ~ c.url }}" target="_blank" rel="noopener noreferrer" class="text-xs text-indigo-600 hover:underline break-all">{{ c.url }}</a>{% endif %}
-                            {% if c.equipo_id and equipos.get(c.equipo_id) %}<div class="text-xs text-slate-400">Equipo: {{ equipos[c.equipo_id] }}</div>{% endif %}
-                            <div id="notas-{{ c.id }}" class="hidden text-xs text-slate-600 bg-amber-50 border border-amber-100 rounded-lg p-2 mt-2 whitespace-pre-wrap"></div>
-                        </td>
-                        <td class="px-4 py-3">
-                            {% if c.usuario %}<button type="button" onclick='copiar({{ c.usuario|tojson }}, this)' class="font-mono text-slate-700 hover:text-indigo-600" title="Copiar usuario">{{ c.usuario }}</button>{% endif %}
-                        </td>
-                        <td class="px-4 py-3 whitespace-nowrap">
-                            <span id="clave-{{ c.id }}" class="font-mono text-slate-400">••••••••</span>
-                            <button type="button" onclick="revelar({{ c.id }}, this)" class="ml-2 text-xs font-bold text-indigo-600 hover:underline">Ver</button>
-                            <button type="button" onclick="copiarClave({{ c.id }}, this)" class="ml-1 text-xs font-bold text-slate-500 hover:underline">Copiar</button>
-                        </td>
-                        <td class="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">{{ c.fecha_actualizacion.strftime('%d/%m/%Y') if c.fecha_actualizacion else '' }}<div class="text-slate-400">{{ c.actualizado_por or '' }}</div></td>
-                        <td class="px-4 py-3 text-right whitespace-nowrap">
-                            <button type="button" onclick='abrirFormulario({{ {"id": c.id, "categoria": c.categoria, "servicio": c.servicio, "usuario": c.usuario or "", "url": c.url or "", "equipo_id": c.equipo_id or ""}|tojson }})' class="text-xs font-bold text-indigo-600 hover:underline">Editar</button>
-                            <form action="/admin/boveda/{{ c.id }}/delete" method="POST" class="inline" onsubmit='return confirm({{ ("¿Eliminar la credencial de " ~ c.servicio ~ "?")|tojson }});'><button class="ml-2 text-xs font-bold text-rose-500 hover:underline">Eliminar</button></form>
-                        </td>
-                    </tr>
-                {% else %}
-                    <tr><td colspan="6" class="text-center py-10 text-slate-400">La bóveda está vacía. Agregue credenciales o importe un CSV.</td></tr>
-                {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </div>
-
-    <div id="formulario" class="hidden bg-white rounded-3xl shadow-lg shadow-indigo-100/50 border-2 border-indigo-200 p-6 sm:p-8">
-        <h3 id="form-titulo" class="text-xl font-extrabold text-slate-800 mb-4">Nueva credencial</h3>
-        <form action="/admin/boveda/guardar" method="POST" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-3" autocomplete="off">
-            <input type="hidden" name="credencial_id" id="f-id">
-            <label class="text-xs font-bold text-slate-500">Categoría
-                <select name="categoria" id="f-categoria" class="{{ campo }} mt-1">{% for cat in categorias %}<option>{{ cat }}</option>{% endfor %}</select>
-            </label>
-            <label class="text-xs font-bold text-slate-500">Servicio / sistema<input name="servicio" id="f-servicio" class="{{ campo }} mt-1" required placeholder="ej. Correo gerencia, Siigo, NVR cámaras"></label>
-            <label class="text-xs font-bold text-slate-500">Usuario<input name="usuario" id="f-usuario" class="{{ campo }} mt-1" autocomplete="off"></label>
-            <label class="text-xs font-bold text-slate-500">Contraseña <span id="f-clave-ayuda" class="font-normal text-slate-400"></span>
-                <div class="flex gap-2 mt-1">
-                    <input name="clave" id="f-clave" type="password" class="{{ campo }} font-mono" autocomplete="new-password">
-                    <button type="button" onclick="generar()" class="text-xs font-bold bg-slate-100 hover:bg-slate-200 rounded-xl px-3" title="Generar contraseña segura">Generar</button>
+    <!-- Encabezado -->
+    <div class="bg-gradient-to-br from-indigo-600 to-violet-600 rounded-3xl shadow-lg shadow-indigo-200 p-6 sm:p-8 text-white">
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-5">
+            <div class="flex items-center gap-4">
+                <div class="w-14 h-14 rounded-2xl bg-white/15 flex items-center justify-center text-3xl">🔓</div>
+                <div>
+                    <h2 class="text-2xl sm:text-3xl font-extrabold tracking-tight">Bóveda de Contraseñas</h2>
+                    <p class="text-sm text-indigo-100 mt-0.5">{{ credenciales|length }} credenciales en {{ secciones|length }} categorías · cifradas</p>
                 </div>
-            </label>
-            <label class="text-xs font-bold text-slate-500">URL / IP<input name="url" id="f-url" class="{{ campo }} mt-1"></label>
-            <label class="text-xs font-bold text-slate-500">Equipo relacionado
-                <select name="equipo_id" id="f-equipo" class="{{ campo }} mt-1"><option value="">—</option>{% for eid, nombre in equipos.items() %}<option value="{{ eid }}">{{ nombre }}</option>{% endfor %}</select>
-            </label>
-            <label class="text-xs font-bold text-slate-500 sm:col-span-2 lg:col-span-3">Notas (se guardan cifradas) <span id="f-notas-ayuda" class="font-normal text-slate-400"></span><textarea name="notas" id="f-notas" rows="2" class="{{ campo }} mt-1"></textarea></label>
-            <div class="sm:col-span-2 lg:col-span-3 flex gap-3">
-                <button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 px-6 rounded-xl text-sm">Guardar</button>
-                <button type="button" onclick="document.getElementById('formulario').classList.add('hidden')" class="text-sm font-bold text-slate-500">Cancelar</button>
             </div>
-        </form>
+            <div class="flex flex-wrap items-center gap-2">
+                <span class="text-xs bg-white/15 rounded-full px-3 py-1.5 font-semibold">Se bloquea en <span id="cuenta-regresiva">{{ segundos_restantes // 60 }}:{{ "%02d"|format(segundos_restantes % 60) }}</span></span>
+                <button onclick="abrirFormulario()" class="bg-white text-indigo-700 hover:bg-indigo-50 font-bold py-2 px-4 rounded-xl text-sm">+ Nueva</button>
+                <form action="/admin/boveda/bloquear" method="POST"><button class="bg-slate-900/40 hover:bg-slate-900/60 font-bold py-2 px-4 rounded-xl text-sm">🔒 Bloquear</button></form>
+            </div>
+        </div>
+        <div class="relative mt-6">
+            <svg class="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M17 10.5a6.5 6.5 0 11-13 0 6.5 6.5 0 0113 0z"/></svg>
+            <input id="buscar" type="search" autocomplete="off" placeholder="Buscar por servicio, correo, usuario, equipo…" class="w-full rounded-2xl pl-12 pr-4 py-3.5 text-slate-800 text-sm shadow-inner focus:outline-none focus:ring-4 focus:ring-white/40">
+        </div>
     </div>
 
-    <div class="grid lg:grid-cols-2 gap-6">
-        <div class="bg-white rounded-3xl shadow-lg shadow-indigo-100/50 border border-indigo-50 p-6 text-sm">
-            <h3 class="text-lg font-extrabold text-slate-800 mb-2">Migrar desde documentos de texto</h3>
-            <p class="text-slate-500 mb-3">Pase las claves a un Excel con las columnas <code class="bg-slate-100 px-1 rounded">categoria, servicio, usuario, clave, url, notas</code>, guárdelo como CSV y súbalo. Después <b>borre el documento original</b> y vacíe la papelera.</p>
-            <form action="/admin/boveda/importar" method="POST" enctype="multipart/form-data" class="flex flex-col sm:flex-row gap-3">
-                <input type="file" name="archivo" accept=".csv,text/csv" required class="text-sm">
-                <button class="bg-slate-800 hover:bg-slate-900 text-white font-bold py-2 px-4 rounded-xl text-sm">Importar CSV</button>
-            </form>
-        </div>
-        <div class="bg-white rounded-3xl shadow-lg shadow-indigo-100/50 border border-indigo-50 p-6 text-sm">
-            <h3 class="text-lg font-extrabold text-slate-800 mb-2">Registro de accesos</h3>
-            <div class="max-h-64 overflow-y-auto divide-y divide-slate-100">
-            {% for a in accesos %}
-                <div class="py-1.5 flex justify-between gap-3 text-xs">
-                    <span><b class="{% if a.accion == 'Intento fallido' %}text-rose-600{% elif a.accion in ['Eliminar'] %}text-rose-500{% else %}text-slate-700{% endif %}">{{ a.accion }}</b> {{ a.servicio or '' }} · {{ a.usuario_app }}</span>
-                    <span class="text-slate-400 whitespace-nowrap">{{ a.fecha.strftime('%d/%m %I:%M %p') }}</span>
-                </div>
-            {% else %}
-                <div class="text-slate-400 text-xs">Sin accesos registrados</div>
+    <div class="grid lg:grid-cols-[230px_1fr] gap-6 items-start">
+        <!-- Menú de categorías -->
+        <nav class="lg:sticky lg:top-28 flex lg:flex-col gap-2 overflow-x-auto pb-1 lg:pb-0 -mx-1 px-1 [scrollbar-width:none]">
+            <button data-cat="" class="cat-btn shrink-0 flex items-center justify-between gap-3 px-4 py-2.5 rounded-2xl text-sm font-bold border transition-colors">
+                <span class="flex items-center gap-2"><span>🗂️</span> Todas</span>
+                <span class="text-xs rounded-full px-2 py-0.5 bg-black/5">{{ credenciales|length }}</span>
+            </button>
+            {% for s in secciones %}
+            <button data-cat="{{ s.nombre }}" class="cat-btn shrink-0 flex items-center justify-between gap-3 px-4 py-2.5 rounded-2xl text-sm font-bold border transition-colors">
+                <span class="flex items-center gap-2 whitespace-nowrap"><span>{{ s.icono }}</span> {{ s.nombre }}</span>
+                <span class="text-xs rounded-full px-2 py-0.5 bg-black/5">{{ s.total }}</span>
+            </button>
             {% endfor %}
+        </nav>
+
+        <!-- Contenido -->
+        <div class="space-y-8 min-w-0">
+            <div id="sin-resultados" class="hidden bg-white rounded-3xl border border-slate-100 p-10 text-center text-slate-400">Ninguna credencial coincide con la búsqueda.</div>
+            {% if not credenciales %}
+            <div class="bg-white rounded-3xl border border-slate-100 p-10 text-center text-slate-400">La bóveda está vacía. Agregue credenciales o importe un CSV en “Herramientas”.</div>
+            {% endif %}
+
+            {% for s in secciones %}
+            <section class="seccion" data-cat="{{ s.nombre }}">
+                <h3 class="flex items-center gap-2 text-lg font-extrabold text-slate-800 mb-3 px-1">
+                    <span class="text-xl">{{ s.icono }}</span> {{ s.nombre }}
+                    <span class="text-xs font-bold text-slate-400 bg-slate-100 rounded-full px-2 py-0.5">{{ s.total }}</span>
+                </h3>
+                <div class="space-y-3">
+                {% for g in s.grupos %}
+                    <details class="grupo group bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden" {% if s.grupos|length == 1 %}open{% endif %}>
+                        <summary class="flex items-center justify-between gap-3 px-5 py-3.5 cursor-pointer select-none list-none hover:bg-slate-50">
+                            <span class="flex items-center gap-3 min-w-0">
+                                <span class="font-bold text-slate-700">{{ g.nombre }}</span>
+                                {% if g.url_comun %}<a href="{{ g.url_comun if '://' in g.url_comun else 'https://' ~ g.url_comun }}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()" class="hidden sm:inline text-xs text-indigo-500 hover:underline truncate">{{ g.url_comun }}</a>{% endif %}
+                            </span>
+                            <span class="flex items-center gap-3">
+                                <span class="contador text-xs font-bold text-indigo-600 bg-indigo-50 rounded-full px-2.5 py-0.5">{{ g.lista|length }}</span>
+                                <svg class="w-4 h-4 text-slate-400 transition-transform group-open:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                            </span>
+                        </summary>
+                        <ul class="divide-y divide-slate-100 border-t border-slate-100">
+                        {% for it in g.lista %}{% set c = it.c %}
+                            {% if it.subtitulo %}<li class="subtitulo px-5 pt-3 pb-1.5 bg-slate-50/70 text-[11px] font-extrabold uppercase tracking-wider text-slate-400" data-sub="{{ it.subtitulo }}">{{ it.subtitulo }}</li>{% endif %}
+                            <li data-sub="{{ it.detalle }}" class="item px-5 py-3.5 hover:bg-indigo-50/30" data-buscar="{{ (c.servicio ~ ' ' ~ (c.usuario or '') ~ ' ' ~ (c.url or '') ~ ' ' ~ c.categoria ~ ' ' ~ g.nombre)|lower }}">
+                                <div class="flex flex-col md:flex-row md:items-center gap-2 md:gap-4">
+                                    <div class="flex items-center gap-3 min-w-0 md:w-[38%]">
+                                        <div class="w-9 h-9 shrink-0 rounded-xl bg-gradient-to-br from-indigo-100 to-violet-100 text-indigo-700 font-extrabold text-sm flex items-center justify-center">{{ (it.titulo|trim)[:1]|upper }}</div>
+                                        <div class="min-w-0">
+                                            {% if it.titulo == c.usuario %}
+                                            <button type="button" onclick='copiar({{ c.usuario|tojson }}, this)' class="block max-w-full font-semibold text-slate-800 hover:text-indigo-700 truncate text-left" title="Copiar usuario · {{ c.servicio }}">{{ it.titulo }}</button>
+                                            {% else %}
+                                            <div class="font-semibold text-slate-800 truncate" title="{{ c.servicio }}">{{ it.titulo }}</div>
+                                            {% endif %}
+                                            {% if it.mostrar_url %}<a href="{{ c.url if '://' in c.url else 'https://' ~ c.url }}" target="_blank" rel="noopener noreferrer" class="block text-xs text-indigo-500 hover:underline truncate">{{ c.url }}</a>
+                                            {% elif c.equipo_id and equipos.get(c.equipo_id) %}<div class="text-xs text-slate-400 truncate">{{ equipos[c.equipo_id] }}</div>{% endif %}
+                                        </div>
+                                    </div>
+                                    <div class="min-w-0 md:w-[30%] pl-12 md:pl-0">
+                                        {% if it.mostrar_usuario %}
+                                        <button type="button" onclick='copiar({{ c.usuario|tojson }}, this)' class="group/u inline-flex items-center gap-1.5 max-w-full font-mono text-sm text-slate-600 hover:text-indigo-700" title="Copiar usuario">
+                                            <span class="truncate">{{ c.usuario }}</span>
+                                            <svg class="w-3.5 h-3.5 shrink-0 opacity-40 group-hover/u:opacity-100" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+                                        </button>
+                                        {% elif not c.usuario %}<span class="text-xs text-slate-300">sin usuario</span>{% endif %}
+                                    </div>
+                                    <div class="flex items-center gap-2 md:ml-auto pl-12 md:pl-0">
+                                        {% if c.clave_cifrada %}
+                                        <span id="clave-{{ c.id }}" class="font-mono text-sm text-slate-400 bg-slate-50 border border-slate-100 rounded-lg px-2.5 py-1 min-w-[7.5rem] text-center select-all">••••••••</span>
+                                        <button type="button" onclick="revelar({{ c.id }}, this)" class="text-xs font-bold text-indigo-600 hover:bg-indigo-50 rounded-lg px-2 py-1">Ver</button>
+                                        <button type="button" onclick="copiarClave({{ c.id }}, this)" class="text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg px-2.5 py-1">Copiar</button>
+                                        {% else %}
+                                        <span class="text-xs text-amber-600 bg-amber-50 border border-amber-100 rounded-lg px-2.5 py-1">Sin contraseña</span>
+                                        <button type="button" onclick="revelar({{ c.id }}, this)" class="text-xs font-bold text-indigo-600 hover:bg-indigo-50 rounded-lg px-2 py-1">Notas</button>
+                                        {% endif %}
+                                        <details class="relative">
+                                            <summary class="list-none cursor-pointer text-slate-400 hover:text-slate-700 rounded-lg px-1.5 py-1" title="Más opciones">⋮</summary>
+                                            <div class="absolute right-0 z-20 mt-1 w-36 bg-white border border-slate-200 rounded-xl shadow-lg py-1 text-sm">
+                                                <button type="button" onclick='abrirFormulario({{ {"id": c.id, "categoria": c.categoria, "servicio": c.servicio, "usuario": c.usuario or "", "url": c.url or "", "equipo_id": c.equipo_id or ""}|tojson }})' class="w-full text-left px-3 py-1.5 hover:bg-slate-50">Editar</button>
+                                                <form action="/admin/boveda/{{ c.id }}/delete" method="POST" onsubmit='return confirm({{ ("¿Eliminar la credencial " ~ c.servicio ~ "?")|tojson }});'>
+                                                    <button class="w-full text-left px-3 py-1.5 hover:bg-rose-50 text-rose-600">Eliminar</button>
+                                                </form>
+                                                <div class="px-3 pt-1.5 mt-1 border-t border-slate-100 text-[11px] text-slate-400">Act. {{ c.fecha_actualizacion.strftime('%d/%m/%Y') if c.fecha_actualizacion else '' }}{% if c.actualizado_por %} · {{ c.actualizado_por }}{% endif %}</div>
+                                            </div>
+                                        </details>
+                                    </div>
+                                </div>
+                                <div id="notas-{{ c.id }}" class="hidden mt-3 ml-12 text-xs text-slate-600 bg-amber-50/70 border border-amber-100 rounded-xl p-3 whitespace-pre-wrap leading-relaxed"></div>
+                            </li>
+                        {% endfor %}
+                        </ul>
+                    </details>
+                {% endfor %}
+                </div>
+            </section>
+            {% endfor %}
+
+            <!-- Herramientas -->
+            <details class="bg-white rounded-2xl border border-slate-100 shadow-sm">
+                <summary class="px-5 py-3.5 cursor-pointer list-none font-bold text-slate-600 hover:bg-slate-50 rounded-2xl">🛠️ Herramientas: importar CSV y registro de accesos</summary>
+                <div class="grid lg:grid-cols-2 gap-6 p-5 border-t border-slate-100 text-sm">
+                    <div>
+                        <h4 class="font-extrabold text-slate-800 mb-2">Importar desde CSV</h4>
+                        <p class="text-slate-500 mb-3">Columnas: <code class="bg-slate-100 px-1 rounded">categoria, servicio, usuario, clave, url, notas</code>. Use “Grupo · detalle” en el servicio para que quede agrupado. Después borre el archivo original.</p>
+                        <form action="/admin/boveda/importar" method="POST" enctype="multipart/form-data" class="flex flex-col sm:flex-row gap-3">
+                            <input type="file" name="archivo" accept=".csv,text/csv" required class="text-sm">
+                            <button class="bg-slate-800 hover:bg-slate-900 text-white font-bold py-2 px-4 rounded-xl text-sm">Importar</button>
+                        </form>
+                    </div>
+                    <div>
+                        <h4 class="font-extrabold text-slate-800 mb-2">Registro de accesos</h4>
+                        <div class="max-h-64 overflow-y-auto divide-y divide-slate-100">
+                        {% for a in accesos %}
+                            <div class="py-1.5 flex justify-between gap-3 text-xs">
+                                <span><b class="{% if a.accion in ['Intento fallido', 'Eliminar'] %}text-rose-600{% else %}text-slate-700{% endif %}">{{ a.accion }}</b> {{ a.servicio or '' }} · {{ a.usuario_app }}</span>
+                                <span class="text-slate-400 whitespace-nowrap">{{ a.fecha.strftime('%d/%m %I:%M %p') }}</span>
+                            </div>
+                        {% else %}
+                            <div class="text-slate-400 text-xs">Sin accesos registrados</div>
+                        {% endfor %}
+                        </div>
+                    </div>
+                </div>
+            </details>
+        </div>
+    </div>
+
+    <!-- Formulario (modal) -->
+    <div id="formulario" class="hidden fixed inset-0 z-[60] bg-slate-900/40 backdrop-blur-sm flex items-start sm:items-center justify-center p-4 overflow-y-auto" onclick="if (event.target === this) cerrarFormulario()">
+        <div class="bg-white rounded-3xl shadow-2xl w-full max-w-2xl p-6 sm:p-8">
+            <div class="flex items-center justify-between mb-5">
+                <h3 id="form-titulo" class="text-xl font-extrabold text-slate-800">Nueva credencial</h3>
+                <button type="button" onclick="cerrarFormulario()" class="text-slate-400 hover:text-slate-700 text-2xl leading-none">×</button>
             </div>
+            <form action="/admin/boveda/guardar" method="POST" class="grid sm:grid-cols-2 gap-3" autocomplete="off">
+                <input type="hidden" name="credencial_id" id="f-id">
+                <label class="text-xs font-bold text-slate-500">Categoría
+                    <select name="categoria" id="f-categoria" class="{{ campo }} mt-1">{% for cat in categorias %}<option>{{ cat }}</option>{% endfor %}</select>
+                </label>
+                <label class="text-xs font-bold text-slate-500">Servicio <span class="font-normal text-slate-400">(Grupo · detalle)</span><input name="servicio" id="f-servicio" class="{{ campo }} mt-1" required placeholder="Gmail · Producción"></label>
+                <label class="text-xs font-bold text-slate-500">Usuario<input name="usuario" id="f-usuario" class="{{ campo }} mt-1" autocomplete="off"></label>
+                <label class="text-xs font-bold text-slate-500">Contraseña <span id="f-clave-ayuda" class="font-normal text-slate-400"></span>
+                    <div class="flex gap-2 mt-1">
+                        <input name="clave" id="f-clave" type="password" class="{{ campo }} font-mono" autocomplete="new-password">
+                        <button type="button" onclick="generar()" class="text-xs font-bold bg-slate-100 hover:bg-slate-200 rounded-xl px-3" title="Generar contraseña segura">Generar</button>
+                    </div>
+                </label>
+                <label class="text-xs font-bold text-slate-500">URL / IP<input name="url" id="f-url" class="{{ campo }} mt-1"></label>
+                <label class="text-xs font-bold text-slate-500">Equipo relacionado
+                    <select name="equipo_id" id="f-equipo" class="{{ campo }} mt-1"><option value="">—</option>{% for eid, nombre in equipos.items() %}<option value="{{ eid }}">{{ nombre }}</option>{% endfor %}</select>
+                </label>
+                <label class="text-xs font-bold text-slate-500 sm:col-span-2">Notas (cifradas) <span id="f-notas-ayuda" class="font-normal text-slate-400"></span><textarea name="notas" id="f-notas" rows="3" class="{{ campo }} mt-1"></textarea></label>
+                <div class="sm:col-span-2 flex justify-end gap-3 mt-2">
+                    <button type="button" onclick="cerrarFormulario()" class="text-sm font-bold text-slate-500 px-4">Cancelar</button>
+                    <button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 px-6 rounded-xl text-sm">Guardar</button>
+                </div>
+            </form>
         </div>
     </div>
     {% endif %}
@@ -154,19 +232,22 @@ async function revelar(id, btn) {
     const span = document.getElementById('clave-' + id);
     const notas = document.getElementById('notas-' + id);
     if (btn.dataset.visible) {
-        span.textContent = '••••••••'; span.classList.add('text-slate-400'); notas.classList.add('hidden');
-        btn.textContent = 'Ver'; delete btn.dataset.visible; return;
+        if (span) { span.textContent = '••••••••'; span.classList.add('text-slate-400'); }
+        notas.classList.add('hidden');
+        btn.textContent = btn.dataset.etiqueta; delete btn.dataset.visible; return;
     }
     const d = await obtener(id);
     if (!d) return;
-    span.textContent = d.clave || '(vacía)'; span.classList.remove('text-slate-400');
-    if (d.notas) { notas.textContent = d.notas; notas.classList.remove('hidden'); }
-    btn.textContent = 'Ocultar'; btn.dataset.visible = '1';
+    if (span) { span.textContent = d.clave || '(vacía)'; span.classList.remove('text-slate-400'); }
+    notas.textContent = d.notas ? d.notas.split(' | ').join('\n') : 'Sin notas.';
+    notas.classList.remove('hidden');
+    btn.dataset.etiqueta = btn.textContent; btn.textContent = 'Ocultar'; btn.dataset.visible = '1';
     setTimeout(() => { if (btn.dataset.visible) revelar(id, btn); }, 30000);
 }
 async function copiar(texto, btn) {
     await navigator.clipboard.writeText(texto);
-    const t = btn.textContent; btn.textContent = '✓ Copiado'; setTimeout(() => btn.textContent = t, 1200);
+    const original = btn.innerHTML; btn.innerHTML = '<span class="text-emerald-600 font-bold">✓ Copiado</span>';
+    setTimeout(() => btn.innerHTML = original, 1200);
 }
 async function copiarClave(id, btn) {
     const d = await obtener(id);
@@ -176,6 +257,7 @@ async function copiarClave(id, btn) {
 }
 function abrirFormulario(c) {
     c = c || {};
+    document.querySelectorAll('details[open] > summary[title="Más opciones"]').forEach(s => s.parentElement.open = false);
     document.getElementById('formulario').classList.remove('hidden');
     document.getElementById('form-titulo').textContent = c.id ? 'Editar credencial' : 'Nueva credencial';
     document.getElementById('f-id').value = c.id || '';
@@ -185,11 +267,14 @@ function abrirFormulario(c) {
     document.getElementById('f-url').value = c.url || '';
     document.getElementById('f-equipo').value = c.equipo_id || '';
     document.getElementById('f-clave').value = '';
+    document.getElementById('f-clave').type = 'password';
     document.getElementById('f-notas').value = '';
     document.getElementById('f-clave-ayuda').textContent = c.id ? '(en blanco = no cambia)' : '';
     document.getElementById('f-notas-ayuda').textContent = c.id ? '— en blanco = no cambia' : '';
-    document.getElementById('formulario').scrollIntoView({ behavior: 'smooth' });
+    document.getElementById('f-servicio').focus();
 }
+function cerrarFormulario() { document.getElementById('formulario').classList.add('hidden'); }
+document.addEventListener('keydown', e => { if (e.key === 'Escape') cerrarFormulario(); });
 function generar() {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%*-_+=?';
     const v = new Uint32Array(18); crypto.getRandomValues(v);
@@ -197,12 +282,54 @@ function generar() {
     campo.value = Array.from(v, n => chars[n % chars.length]).join('');
     campo.type = 'text';
 }
-document.getElementById('buscar').addEventListener('input', e => {
-    const q = e.target.value.toLowerCase().trim();
-    document.querySelectorAll('.fila-cred').forEach(tr => tr.classList.toggle('hidden', q && !tr.dataset.buscar.includes(q)));
-});
-// Bloqueo automático en pantalla cuando vence la sesión de la bóveda
-setTimeout(() => location.reload(), {{ minutos }} * 60 * 1000 + 2000);
+
+// Filtro por categoría y búsqueda
+let categoria = '';
+const botones = document.querySelectorAll('.cat-btn');
+function aplicarFiltros() {
+    const q = document.getElementById('buscar').value.toLowerCase().trim();
+    let visibles = 0;
+    document.querySelectorAll('.seccion').forEach(sec => {
+        const enCategoria = !categoria || sec.dataset.cat === categoria;
+        let itemsSeccion = 0;
+        sec.querySelectorAll('.grupo').forEach(grupo => {
+            let n = 0;
+            grupo.querySelectorAll('.item').forEach(li => {
+                const ok = enCategoria && (!q || li.dataset.buscar.includes(q));
+                li.classList.toggle('hidden', !ok);
+                if (ok) n++;
+            });
+            grupo.querySelectorAll('.subtitulo').forEach(sub => {
+                const algun = [...grupo.querySelectorAll('.item')].some(li => li.dataset.sub === sub.dataset.sub && !li.classList.contains('hidden'));
+                sub.classList.toggle('hidden', !algun);
+            });
+            grupo.classList.toggle('hidden', n === 0);
+            grupo.querySelector('.contador').textContent = n;
+            if (q) grupo.open = n > 0;
+            itemsSeccion += n;
+        });
+        sec.classList.toggle('hidden', itemsSeccion === 0);
+        visibles += itemsSeccion;
+    });
+    document.getElementById('sin-resultados').classList.toggle('hidden', visibles > 0 || !document.querySelector('.seccion'));
+    botones.forEach(b => {
+        const activo = b.dataset.cat === categoria;
+        b.classList.toggle('bg-indigo-600', activo); b.classList.toggle('text-white', activo); b.classList.toggle('border-indigo-600', activo);
+        b.classList.toggle('bg-white', !activo); b.classList.toggle('text-slate-600', !activo); b.classList.toggle('border-slate-200', !activo);
+    });
+}
+botones.forEach(b => b.addEventListener('click', () => { categoria = b.dataset.cat; aplicarFiltros(); window.scrollTo({ top: 0, behavior: 'smooth' }); }));
+document.getElementById('buscar').addEventListener('input', aplicarFiltros);
+aplicarFiltros();
+
+// Cuenta regresiva y bloqueo automático
+let restante = {{ segundos_restantes }};
+const reloj = document.getElementById('cuenta-regresiva');
+setInterval(() => {
+    restante--;
+    if (restante <= 0) return location.reload();
+    reloj.textContent = `${Math.floor(restante / 60)}:${String(restante % 60).padStart(2, '0')}`;
+}, 1000);
 </script>
 {% endif %}
 {% endblock %}
