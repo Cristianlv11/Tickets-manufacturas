@@ -8,6 +8,9 @@ from sqlalchemy.orm import sessionmaker
 SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./tickets.db")
 if SQLALCHEMY_DATABASE_URL.startswith("postgres://"):
     SQLALCHEMY_DATABASE_URL = SQLALCHEMY_DATABASE_URL.replace("postgres://", "postgresql://", 1)
+# Forzar psycopg2 (instalado en requirements); SQLAlchemy 2.1+ usa psycopg 3 por defecto
+if SQLALCHEMY_DATABASE_URL.startswith("postgresql://"):
+    SQLALCHEMY_DATABASE_URL = SQLALCHEMY_DATABASE_URL.replace("postgresql://", "postgresql+psycopg2://", 1)
 
 connect_args = {"check_same_thread": False} if SQLALCHEMY_DATABASE_URL.startswith("sqlite") else {}
 
