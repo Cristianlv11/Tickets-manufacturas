@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+
+{% block title %}Mi cuenta - TicketsApp{% endblock %}
+
+{% block content %}
+{% set campo = "border border-slate-200 rounded-xl px-3 py-2 text-sm w-full" %}
+<div class="max-w-md mx-auto bg-white rounded-3xl shadow-lg shadow-indigo-100/50 border border-indigo-50 p-8">
+    <h2 class="text-2xl font-extrabold text-slate-800">Cambiar contraseña</h2>
+    <p class="text-sm text-slate-500 mt-1">Usuario: <b>{{ user.username }}</b></p>
+
+    {% if clave_por_defecto %}<p class="text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded-xl p-3 mt-4">Este usuario tiene la contraseña por defecto. Cámbiela antes de usar la bóveda.</p>{% endif %}
+    {% if msg == 'ok' %}<p class="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl p-3 mt-4">Contraseña actualizada.</p>
+    {% elif msg == 'actual' %}<p class="text-sm text-rose-700 mt-4 font-bold">La contraseña actual no es correcta.</p>
+    {% elif msg == 'distintas' %}<p class="text-sm text-rose-700 mt-4 font-bold">La nueva contraseña y la confirmación no coinciden.</p>
+    {% elif msg == 'corta' %}<p class="text-sm text-rose-700 mt-4 font-bold">La nueva contraseña debe tener al menos 10 caracteres.</p>{% endif %}
+
+    <form action="/admin/cuenta" method="POST" class="space-y-3 mt-5">
+        <input type="password" name="actual" placeholder="Contraseña actual" autocomplete="current-password" class="{{ campo }}" required>
+        <input type="password" name="nueva" placeholder="Nueva contraseña (mín. 10 caracteres)" autocomplete="new-password" minlength="10" class="{{ campo }}" required>
+        <input type="password" name="confirmar" placeholder="Confirmar nueva contraseña" autocomplete="new-password" minlength="10" class="{{ campo }}" required>
+        <button class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 rounded-xl text-sm">Guardar</button>
+    </form>
+</div>
+{% endblock %}

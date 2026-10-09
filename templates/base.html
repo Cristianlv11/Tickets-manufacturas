@@ -21,26 +21,27 @@
                         <span class="font-extrabold text-xl sm:text-2xl tracking-tight text-slate-800 hidden md:block">Tickets</span>
                     </a>
                     {% if user and (user.role == 'ADMIN' or user.role == 'admin') %}
-                    <div class="hidden sm:flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-bold">
-                        <a href="/admin" class="px-3 py-1.5 rounded-lg transition-colors {% if request.url.path == '/admin' or '/admin/ticket' in request.url.path %}bg-white text-indigo-600 shadow-xs{% else %}text-slate-600 hover:text-slate-900{% endif %}">
-                            Gestión de Tickets
-                        </a>
-                        <a href="/admin/equipos" class="px-3 py-1.5 rounded-lg transition-colors {% if request.url.path == '/admin/equipos' %}bg-white text-indigo-600 shadow-xs{% else %}text-slate-600 hover:text-slate-900{% endif %}">
-                            Administración de Equipos
-                        </a>
+                    {% set nav_admin = [
+                        ('/admin', 'Tickets', request.url.path == '/admin' or '/admin/ticket' in request.url.path),
+                        ('/admin/equipos', 'Mapa de Equipos', request.url.path == '/admin/equipos'),
+                        ('/admin/activos', 'Activos', request.url.path.startswith('/admin/activos')),
+                        ('/admin/respaldos', 'Respaldos', request.url.path.startswith('/admin/respaldos')),
+                        ('/admin/boveda', 'Contraseñas', request.url.path.startswith('/admin/boveda')),
+                        ('/admin/dominios', 'Dominios', request.url.path.startswith('/admin/dominios')),
+                    ] %}
+                    <div class="hidden lg:flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-bold">
+                        {% for href, label, activo in nav_admin %}
+                        <a href="{{ href }}" class="px-3 py-1.5 rounded-lg transition-colors {% if activo %}bg-white text-indigo-600 shadow-xs{% else %}text-slate-600 hover:text-slate-900{% endif %}">{{ label }}</a>
+                        {% endfor %}
                     </div>
                     {% endif %}
                 </div>
                 <div class="flex items-center gap-2 sm:gap-3">
                     {% if user and (user.role == 'ADMIN' or user.role == 'admin') %}
-                    <div class="flex sm:hidden items-center gap-1 mr-1">
-                        <a href="/admin" class="px-2 py-1 rounded-lg text-xs font-bold {% if request.url.path == '/admin' or '/admin/ticket' in request.url.path %}bg-indigo-50 text-indigo-600{% else %}text-slate-500{% endif %}">
-                            Tickets
-                        </a>
-                        <a href="/admin/equipos" class="px-2 py-1 rounded-lg text-xs font-bold {% if request.url.path == '/admin/equipos' %}bg-indigo-50 text-indigo-600{% else %}text-slate-500{% endif %}">
-                            Equipos
-                        </a>
-                    </div>
+                    <select onchange="location.href=this.value" class="lg:hidden border border-slate-200 bg-white rounded-lg text-xs font-bold text-indigo-600 px-2 py-1.5" aria-label="Sección">
+                        {% for href, label, activo in nav_admin %}<option value="{{ href }}" {% if activo %}selected{% endif %}>{{ label }}</option>{% endfor %}
+                        {% if request.url.path == '/admin/cuenta' %}<option selected>Mi cuenta</option>{% endif %}
+                    </select>
                     {% endif %}
                     <button id="installAppBtn" class="hidden bg-transparent hover:bg-indigo-50 text-indigo-500 border border-indigo-200 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full text-xs sm:text-sm font-bold transition-colors flex items-center gap-1.5">
                         <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
@@ -48,7 +49,7 @@
                         <span class="sm:hidden">Instalar</span>
                     </button>
                     {% if user %}
-                        <span class="hidden md:inline text-sm font-medium text-slate-500">Hola, {{ user.username }}</span>
+                        {% if user.role == 'ADMIN' or user.role == 'admin' %}<a href="/admin/cuenta" class="hidden md:inline text-sm font-medium text-slate-500 hover:text-indigo-600" title="Mi cuenta">Hola, {{ user.username }}</a>{% else %}<span class="hidden md:inline text-sm font-medium text-slate-500">Hola, {{ user.username }}</span>{% endif %}
                         <a href="/logout" class="bg-rose-300 hover:bg-rose-400 text-white px-3 sm:px-4 py-1.5 sm:py-2 rounded-full text-xs sm:text-sm font-semibold transition-colors shadow-sm shadow-rose-200">Salir</a>
                     {% endif %}
                 </div>

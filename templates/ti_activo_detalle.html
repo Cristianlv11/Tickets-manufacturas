@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+
+{% block title %}{{ equipo.nombre }} - Hoja de vida{% endblock %}
+
+{% block content %}
+{% set campo = "border border-slate-200 rounded-xl px-3 py-2 text-sm w-full" %}
+<div class="space-y-6">
+    <a href="/admin/activos" class="text-sm font-bold text-indigo-600 hover:underline">← Volver a activos</a>
+
+    <div class="bg-white rounded-3xl shadow-lg shadow-indigo-100/50 border border-indigo-50 p-6 sm:p-8">
+        <div class="flex flex-col md:flex-row md:items-start justify-between gap-4">
+            <div>
+                <div class="text-xs font-bold uppercase tracking-wider text-indigo-500">Hoja de vida del equipo</div>
+                <h2 class="text-3xl font-extrabold text-slate-800 tracking-tight mt-1">{{ equipo.nombre }}</h2>
+                <p class="text-sm text-slate-500 mt-1">{{ equipo.tipo }} · {{ equipo.piso }} · {{ equipo.usuario }}{% if equipo.cargo %} ({{ equipo.cargo }}){% endif %}</p>
+            </div>
+            {% if respaldo %}
+            <a href="/admin/respaldos" class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm hover:bg-slate-100">
+                <div class="text-xs font-bold uppercase text-slate-500">Respaldo</div>
+                {% set ok = respaldo.fisico.ultimo_ok or respaldo.nube.ultimo_ok %}
+                <div class="font-bold {% if respaldo.nivel == 'ok' %}text-emerald-600{% elif respaldo.nivel == 'atraso' %}text-amber-600{% else %}text-rose-600{% endif %}">
+                    {% if respaldo.nivel == 'ok' %}Al día{% elif respaldo.nivel == 'atraso' %}Atrasado{% elif respaldo.nivel == 'no_aplica' %}No aplica{% else %}Con problema{% endif %}
+                </div>
+                <div class="text-xs text-slate-500">Físico: {{ hace_cuanto(respaldo.fisico.ultimo_ok.fecha) if respaldo.fisico.ultimo_ok else 'nunca' }} · Nube: {{ hace_cuanto(respaldo.nube.ultimo_ok.fecha) if respaldo.nube.ultimo_ok else 'nunca' }}</div>
+            </a>
+            {% endif %}
+        </div>
+
+        <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-6 text-sm">
+            {% for etiqueta, valor in [('Hostname', equipo.hostname), ('IP', equipo.ip), ('MAC', equipo.mac), ('Marca', equipo.marca), ('Sistema operativo', equipo.so), ('Hardware', equipo.hardware), ('Conectado a', equipo.conectado), ('Enlace', equipo.enlace_tipo)] %}
+            <div class="rounded-xl bg-slate-50 border border-slate-100 px-3 py-2">
+                <div class="text-[11px] font-bold uppercase tracking-wider text-slate-400">{{ etiqueta }}</div>
+                <div class="font-semibold text-slate-700 break-words">{{ valor or '—' }}</div>
+            </div>
+            {% endfor %}
+        </div>
+        <p class="text-xs text-slate-400 mt-3">Estos datos de red se editan en <a href="/admin/equipos" class="text-indigo-600 hover:underline">Administración de Equipos</a>.</p>
+    </div>
+
+    <div class="bg-white rounded-3xl shadow-lg shadow-indigo-100/50 border border-indigo-50 p-6 sm:p-8">
+        <h3 class="text-xl font-extrabold text-slate-800 mb-4">Ficha de inventario</h3>
+        <form action="/admin/activos/{{ equipo.id }}/ficha" method="POST" class="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <label class="text-xs font-bold text-slate-500">Placa de inventario<input name="placa_inventario" value="{{ ficha.placa_inventario or '' if ficha else '' }}" class="{{ campo }} mt-1"></label>
+            <label class="text-xs font-bold text-slate-500">Serial<input name="serial" value="{{ ficha.serial or '' if ficha else '' }}" class="{{ campo }} mt-1 font-mono"></label>
+            <label class="text-xs font-bold text-slate-500">Estado
+                <select name="estado" class="{{ campo }} mt-1">{% for e in estados %}<option {% if ficha and ficha.estado == e %}selected{% endif %}>{{ e }}</option>{% endfor %}</select>
+            </label>
+            <label class="text-xs font-bold text-slate-500">Proveedor<input name="proveedor" value="{{ ficha.proveedor or '' if ficha else '' }}" class="{{ campo }} mt-1"></label>
+            <label class="text-xs font-bold text-slate-500">Fecha de compra<input type="date" name="fecha_compra" value="{{ ficha.fecha_compra.isoformat() if ficha and ficha.fecha_compra else '' }}" class="{{ campo }} mt-1"></label>
+            <label class="text-xs font-bold text-slate-500">Garantía hasta<input type="date" name="garantia_hasta" value="{{ ficha.garantia_hasta.isoformat() if ficha and ficha.garantia_hasta else '' }}" class="{{ campo }} mt-1"></label>
+            <label class="text-xs font-bold text-slate-500">Valor de compra (COP)<input name="valor_compra" inputmode="numeric" value="{{ ficha.valor_compra or '' if ficha else '' }}" class="{{ campo }} mt-1"></label>
+            <div class="flex items-end"><button class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 rounded-xl text-sm">Guardar ficha</button></div>
+            <label class="text-xs font-bold text-slate-500 sm:col-span-2 lg:col-span-4">Observaciones<textarea name="observaciones" rows="2" class="{{ campo }} mt-1">{{ ficha.observaciones or '' if ficha else '' }}</textarea></label>
+        </form>
+        {% if ficha and ficha.fecha_actualizacion %}<p class="text-xs text-slate-400 mt-2">Última actualización: {{ ficha.fecha_actualizacion.strftime('%d/%m/%Y %I:%M %p') }}</p>{% endif %}
+    </div>
+
+    <div id="mantenimientos" class="bg-white rounded-3xl shadow-lg shadow-indigo-100/50 border border-indigo-50 p-6 sm:p-8">
+        <h3 class="text-xl font-extrabold text-slate-800 mb-4">Bitácora de mantenimiento</h3>
+        <form action="/admin/activos/{{ equipo.id }}/mantenimiento" method="POST" class="grid sm:grid-cols-2 lg:grid-cols-6 gap-3 bg-slate-50 border border-slate-200 rounded-2xl p-4 mb-5">
+            <input type="date" name="fecha" value="{{ hoy.isoformat() }}" class="{{ campo }}" required>
+            <select name="tipo" class="{{ campo }}"><option>Preventivo</option><option>Correctivo</option><option>Actualización</option><option>Revisión</option><option>Cambio de partes</option></select>
+            <input name="descripcion" placeholder="Qué se hizo" class="{{ campo }} lg:col-span-2" required>
+            <input name="tecnico" placeholder="Técnico" class="{{ campo }}">
+            <div class="flex gap-2">
+                <input name="ticket_id" placeholder="Ticket #" inputmode="numeric" class="{{ campo }}">
+                <button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-4 rounded-xl text-sm">Agregar</button>
+            </div>
+        </form>
+        <div class="overflow-x-auto rounded-2xl border border-slate-100">
+            <table class="min-w-full text-sm text-left">
+                <thead class="bg-slate-50 text-slate-500 text-xs uppercase"><tr><th class="px-4 py-2.5">Fecha</th><th class="px-4 py-2.5">Tipo</th><th class="px-4 py-2.5">Descripción</th><th class="px-4 py-2.5">Técnico</th><th class="px-4 py-2.5">Ticket</th><th></th></tr></thead>
+                <tbody class="divide-y divide-slate-100">
+                {% for m in mantenimientos %}
+                    <tr>
+                        <td class="px-4 py-2.5 whitespace-nowrap font-semibold">{{ m.fecha.strftime('%d/%m/%Y') if m.fecha else '' }}</td>
+                        <td class="px-4 py-2.5"><span class="px-2 py-0.5 rounded-full text-xs font-bold {% if m.tipo == 'Correctivo' %}bg-rose-50 text-rose-700{% elif m.tipo == 'Preventivo' %}bg-emerald-50 text-emerald-700{% else %}bg-indigo-50 text-indigo-700{% endif %}">{{ m.tipo }}</span></td>
+                        <td class="px-4 py-2.5 text-slate-700">{{ m.descripcion }}</td>
+                        <td class="px-4 py-2.5 text-slate-500">{{ m.tecnico or '' }}</td>
+                        <td class="px-4 py-2.5">{% if m.ticket_id %}<a href="/admin/ticket/{{ m.ticket_id }}" class="text-indigo-600 hover:underline">#{{ m.ticket_id }}</a>{% endif %}</td>
+                        <td class="px-4 py-2.5 text-right"><form action="/admin/activos/registro/mantenimiento/{{ m.id }}/delete" method="POST" onsubmit="return confirm('¿Eliminar este registro?');"><button class="text-xs text-rose-500 hover:underline">Eliminar</button></form></td>
+                    </tr>
+                {% else %}
+                    <tr><td colspan="6" class="px-4 py-6 text-center text-slate-400">Sin mantenimientos registrados</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div id="software" class="bg-white rounded-3xl shadow-lg shadow-indigo-100/50 border border-indigo-50 p-6 sm:p-8">
+        <h3 class="text-xl font-extrabold text-slate-800 mb-1">Historial de software</h3>
+        {% if equipo.software %}<p class="text-xs text-slate-400 mb-4">Inventario de red: {{ equipo.software }}</p>{% endif %}
+        <form action="/admin/activos/{{ equipo.id }}/software" method="POST" class="grid sm:grid-cols-2 lg:grid-cols-6 gap-3 bg-slate-50 border border-slate-200 rounded-2xl p-4 mb-5">
+            <input type="date" name="fecha" value="{{ hoy.isoformat() }}" class="{{ campo }}" required>
+            <select name="accion" class="{{ campo }}"><option>Instalado</option><option>Actualizado</option><option>Desinstalado</option></select>
+            <input name="nombre" placeholder="Programa" class="{{ campo }}" required>
+            <input name="version" placeholder="Versión" class="{{ campo }}">
+            <select name="licencia" class="{{ campo }}"><option value="">Licencia…</option><option>Licenciado</option><option>Suscripción</option><option>Gratuito</option><option>Sin licencia</option></select>
+            <div class="flex gap-2">
+                <input name="notas" placeholder="Notas" class="{{ campo }}">
+                <button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-4 rounded-xl text-sm">Agregar</button>
+            </div>
+        </form>
+        <div class="overflow-x-auto rounded-2xl border border-slate-100">
+            <table class="min-w-full text-sm text-left">
+                <thead class="bg-slate-50 text-slate-500 text-xs uppercase"><tr><th class="px-4 py-2.5">Fecha</th><th class="px-4 py-2.5">Acción</th><th class="px-4 py-2.5">Programa</th><th class="px-4 py-2.5">Versión</th><th class="px-4 py-2.5">Licencia</th><th class="px-4 py-2.5">Notas</th><th></th></tr></thead>
+                <tbody class="divide-y divide-slate-100">
+                {% for s in software %}
+                    <tr>
+                        <td class="px-4 py-2.5 whitespace-nowrap font-semibold">{{ s.fecha.strftime('%d/%m/%Y') if s.fecha else '' }}</td>
+                        <td class="px-4 py-2.5"><span class="px-2 py-0.5 rounded-full text-xs font-bold {% if s.accion == 'Desinstalado' %}bg-slate-100 text-slate-500{% elif s.accion == 'Actualizado' %}bg-indigo-50 text-indigo-700{% else %}bg-emerald-50 text-emerald-700{% endif %}">{{ s.accion }}</span></td>
+                        <td class="px-4 py-2.5 font-semibold text-slate-700">{{ s.nombre }}</td>
+                        <td class="px-4 py-2.5 text-slate-500">{{ s.version or '' }}</td>
+                        <td class="px-4 py-2.5 {% if s.licencia == 'Sin licencia' %}text-rose-600 font-bold{% else %}text-slate-500{% endif %}">{{ s.licencia or '' }}</td>
+                        <td class="px-4 py-2.5 text-slate-500">{{ s.notas or '' }}</td>
+                        <td class="px-4 py-2.5 text-right"><form action="/admin/activos/registro/software/{{ s.id }}/delete" method="POST" onsubmit="return confirm('¿Eliminar este registro?');"><button class="text-xs text-rose-500 hover:underline">Eliminar</button></form></td>
+                    </tr>
+                {% else %}
+                    <tr><td colspan="7" class="px-4 py-6 text-center text-slate-400">Sin cambios de software registrados</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+
+{% block title %}Copias de Seguridad - TicketsApp{% endblock %}
+
+{% macro chip(info) %}
+    {% set n = info.nivel %}
+    {% if n == 'ok' %}<span class="px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700 border border-emerald-200">Al día</span>
+    {% elif n == 'atraso' %}<span class="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-700 border border-amber-200">Atrasado</span>
+    {% elif n == 'vencido' %}<span class="px-2.5 py-1 rounded-full text-xs font-bold bg-rose-100 text-rose-700 border border-rose-200">Vencido</span>
+    {% elif n == 'error' %}<span class="px-2.5 py-1 rounded-full text-xs font-bold bg-rose-100 text-rose-700 border border-rose-200">Falló</span>
+    {% elif n == 'sin_datos' %}<span class="px-2.5 py-1 rounded-full text-xs font-bold bg-slate-200 text-slate-700 border border-slate-300">Sin reportes</span>
+    {% else %}<span class="px-2.5 py-1 rounded-full text-xs font-bold bg-slate-50 text-slate-400 border border-slate-200">No aplica</span>{% endif %}
+    {% if info.ultimo_ok %}
+        <div class="text-xs text-slate-600 mt-1.5 font-semibold">{{ info.ultimo_ok.fecha.strftime('%d/%m/%Y %I:%M %p') }}</div>
+        <div class="text-[11px] text-slate-400">{{ hace_cuanto(info.ultimo_ok.fecha) }}{% if info.ultimo_ok.tamano_bytes %} · {{ tamano_legible(info.ultimo_ok.tamano_bytes) }}{% endif %}{% if info.ultimo_ok.origen == 'Manual' %} · manual{% endif %}</div>
+    {% elif info.requerido %}
+        <div class="text-[11px] text-slate-400 mt-1.5">Nunca se ha registrado un respaldo exitoso</div>
+    {% endif %}
+{% endmacro %}
+
+{% block content %}
+<div class="space-y-8">
+    <div class="bg-white rounded-3xl shadow-lg shadow-indigo-100/50 border border-indigo-50 p-6 sm:p-8">
+        <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6">
+            <div>
+                <h2 class="text-3xl font-extrabold text-slate-800 tracking-tight">Copias de Seguridad</h2>
+                <p class="text-sm text-slate-500 mt-1">Último respaldo físico y en la nube por estación de trabajo, validado automáticamente por el script de cada PC.</p>
+            </div>
+            <div class="flex flex-wrap gap-2.5">
+                <form action="/admin/respaldos/sincronizar" method="POST">
+                    <button class="inline-flex items-center gap-2 bg-white hover:bg-indigo-50 text-indigo-700 border border-indigo-200 font-bold py-2.5 px-4 rounded-xl text-sm">Cargar estaciones del inventario</button>
+                </form>
+                <a href="/admin/respaldos/script" class="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 px-4 rounded-xl shadow-md shadow-indigo-200 text-sm">Descargar script para las PC</a>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+            <div class="p-4 rounded-2xl border-2 border-slate-200 bg-slate-50/60">
+                <div class="text-xs font-extrabold uppercase tracking-wider text-slate-600">Estaciones activas</div>
+                <div class="text-3xl font-extrabold text-slate-800 mt-2">{{ conteo.total }}</div>
+            </div>
+            <div class="p-4 rounded-2xl border-2 border-emerald-300 bg-emerald-50/50">
+                <div class="text-xs font-extrabold uppercase tracking-wider text-emerald-800">Al día</div>
+                <div class="text-3xl font-extrabold text-emerald-900 mt-2">{{ conteo.ok }}</div>
+            </div>
+            <div class="p-4 rounded-2xl border-2 border-amber-300 bg-amber-50/50">
+                <div class="text-xs font-extrabold uppercase tracking-wider text-amber-800">Atrasadas</div>
+                <div class="text-3xl font-extrabold text-amber-900 mt-2">{{ conteo.atraso }}</div>
+            </div>
+            <div class="p-4 rounded-2xl border-2 border-rose-300 bg-rose-50/50">
+                <div class="text-xs font-extrabold uppercase tracking-wider text-rose-800">Vencidas / con error</div>
+                <div class="text-3xl font-extrabold text-rose-900 mt-2">{{ conteo.problema }}</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="bg-white rounded-3xl shadow-lg shadow-indigo-100/50 border border-indigo-50 p-4 sm:p-6">
+        <div class="overflow-x-auto rounded-2xl border border-slate-100">
+            <table class="min-w-full bg-white text-left">
+                <thead class="bg-slate-50 text-slate-500 border-b border-slate-100">
+                    <tr>
+                        <th class="py-3.5 px-5 uppercase font-bold text-xs tracking-wider">Estación</th>
+                        <th class="py-3.5 px-5 uppercase font-bold text-xs tracking-wider">Respaldo físico</th>
+                        <th class="py-3.5 px-5 uppercase font-bold text-xs tracking-wider">Respaldo en nube</th>
+                        <th class="py-3.5 px-5 uppercase font-bold text-xs tracking-wider">Frecuencia</th>
+                        <th class="py-3.5 px-5 uppercase font-bold text-xs tracking-wider">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100">
+                    {% for r in resumen %}
+                    {% set e = r.estacion %}
+                    <tr class="align-top {% if not e.activo %}opacity-50{% elif r.nivel in ['vencido','error','sin_datos'] %}bg-rose-50/30{% endif %}">
+                        <td class="py-4 px-5">
+                            <div class="font-bold text-slate-900">{{ e.nombre }}</div>
+                            <div class="text-xs text-slate-400 font-mono mt-0.5">{{ e.hostname }}</div>
+                            {% if e.equipo_id %}<a href="/admin/activos/{{ e.equipo_id }}" class="text-xs text-indigo-600 hover:underline">Hoja de vida</a>{% endif %}
+                            {% if not e.activo %}<div class="text-[11px] font-bold text-slate-500 mt-1">INACTIVA</div>{% endif %}
+                        </td>
+                        <td class="py-4 px-5">{{ chip(r.fisico) }}</td>
+                        <td class="py-4 px-5">{{ chip(r.nube) }}</td>
+                        <td class="py-4 px-5 text-sm text-slate-600">Cada {{ e.frecuencia_horas }} h</td>
+                        <td class="py-4 px-5">
+                            <details class="group">
+                                <summary class="cursor-pointer text-xs font-bold text-indigo-600 hover:text-indigo-800 list-none">Historial / editar ▾</summary>
+                                <div class="mt-3 w-[min(80vw,640px)] space-y-4">
+                                    <div class="rounded-xl border border-slate-200 overflow-hidden">
+                                        <table class="min-w-full text-xs">
+                                            <thead class="bg-slate-50 text-slate-500"><tr><th class="px-2 py-1.5 text-left">Fecha</th><th class="px-2 py-1.5 text-left">Tipo</th><th class="px-2 py-1.5 text-left">Estado</th><th class="px-2 py-1.5 text-left">Detalle</th></tr></thead>
+                                            <tbody class="divide-y divide-slate-100">
+                                            {% for reg in e.registros[:10] %}
+                                                <tr>
+                                                    <td class="px-2 py-1.5 whitespace-nowrap">{{ reg.fecha.strftime('%d/%m/%y %I:%M %p') }}</td>
+                                                    <td class="px-2 py-1.5">{{ reg.tipo }}</td>
+                                                    <td class="px-2 py-1.5 font-bold {% if reg.estado == 'OK' %}text-emerald-600{% else %}text-rose-600{% endif %}">{{ reg.estado }}</td>
+                                                    <td class="px-2 py-1.5 text-slate-500 break-all">{{ reg.origen }}{% if reg.registrado_por %} ({{ reg.registrado_por }}){% endif %}{% if reg.archivos %} · {{ reg.archivos }} archivos{% endif %}{% if reg.tamano_bytes %} · {{ tamano_legible(reg.tamano_bytes) }}{% endif %}{% if reg.mensaje %} · {{ reg.mensaje[:220] }}{% endif %}</td>
+                                                </tr>
+                                            {% else %}
+                                                <tr><td colspan="4" class="px-2 py-3 text-center text-slate-400">Sin registros todavía</td></tr>
+                                            {% endfor %}
+                                            </tbody>
+                                        </table>
+                                    </div>
+
+                                    <form action="/admin/respaldos/manual" method="POST" class="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-slate-50 p-3 rounded-xl border border-slate-200">
+                                        <input type="hidden" name="estacion_id" value="{{ e.id }}">
+                                        <div class="col-span-2 sm:col-span-4 text-xs font-bold text-slate-600">Registrar respaldo manual</div>
+                                        <select name="tipo" class="border border-slate-200 rounded-lg px-2 py-1.5 text-xs"><option>Físico</option><option>Nube</option></select>
+                                        <select name="estado" class="border border-slate-200 rounded-lg px-2 py-1.5 text-xs"><option value="OK">OK</option><option value="Error">Error</option></select>
+                                        <input type="datetime-local" name="fecha" value="{{ ahora.strftime('%Y-%m-%dT%H:%M') }}" class="col-span-2 border border-slate-200 rounded-lg px-2 py-1.5 text-xs">
+                                        <input name="destino" placeholder="Destino (disco, NAS, Drive…)" class="col-span-2 border border-slate-200 rounded-lg px-2 py-1.5 text-xs">
+                                        <input name="mensaje" placeholder="Observación" class="border border-slate-200 rounded-lg px-2 py-1.5 text-xs">
+                                        <button class="bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold px-2 py-1.5">Registrar</button>
+                                    </form>
+
+                                    <form action="/admin/respaldos/estacion" method="POST" class="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-white p-3 rounded-xl border border-slate-200">
+                                        <input type="hidden" name="estacion_id" value="{{ e.id }}">
+                                        <div class="col-span-2 sm:col-span-4 text-xs font-bold text-slate-600">Configuración de la estación</div>
+                                        <input name="nombre" value="{{ e.nombre }}" class="col-span-2 border border-slate-200 rounded-lg px-2 py-1.5 text-xs" placeholder="Nombre">
+                                        <input name="hostname" value="{{ e.hostname }}" class="border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-mono" placeholder="HOSTNAME">
+                                        <label class="text-xs text-slate-600 flex items-center gap-1">Cada <input type="number" name="frecuencia_horas" value="{{ e.frecuencia_horas }}" min="1" class="w-14 border border-slate-200 rounded-lg px-1 py-1"> h</label>
+                                        <label class="text-xs flex items-center gap-1"><input type="checkbox" name="requiere_fisico" {% if e.requiere_fisico %}checked{% endif %}> Físico</label>
+                                        <label class="text-xs flex items-center gap-1"><input type="checkbox" name="requiere_nube" {% if e.requiere_nube %}checked{% endif %}> Nube</label>
+                                        <label class="text-xs flex items-center gap-1"><input type="checkbox" name="activo" {% if e.activo %}checked{% endif %}> Activa</label>
+                                        <input name="notas" value="{{ e.notas or '' }}" placeholder="Notas" class="border border-slate-200 rounded-lg px-2 py-1.5 text-xs">
+                                        <button class="col-span-2 sm:col-span-4 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-bold px-2 py-1.5">Guardar configuración</button>
+                                    </form>
+                                    <form action="/admin/respaldos/estacion/{{ e.id }}/delete" method="POST" onsubmit="return confirm('¿Eliminar esta estación y todo su historial de respaldos?');">
+                                        <button class="text-xs text-rose-600 hover:underline font-bold">Eliminar estación</button>
+                                    </form>
+                                </div>
+                            </details>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="5" class="text-center py-10 text-slate-400 font-medium">No hay estaciones. Use “Cargar estaciones del inventario” o instale el script en una PC: se registra sola al primer reporte.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="grid lg:grid-cols-2 gap-6">
+        <div class="bg-white rounded-3xl shadow-lg shadow-indigo-100/50 border border-indigo-50 p-6">
+            <h3 class="text-lg font-extrabold text-slate-800 mb-3">Agregar estación manualmente</h3>
+            <form action="/admin/respaldos/estacion" method="POST" class="grid grid-cols-2 gap-3">
+                <input name="nombre" placeholder="Nombre (ej. PC Contabilidad)" class="col-span-2 border border-slate-200 rounded-xl px-3 py-2 text-sm" required>
+                <input name="hostname" placeholder="Nombre del equipo (HOSTNAME)" class="border border-slate-200 rounded-xl px-3 py-2 text-sm font-mono" required>
+                <label class="text-sm text-slate-600 flex items-center gap-2">Cada <input type="number" name="frecuencia_horas" value="24" min="1" class="w-20 border border-slate-200 rounded-xl px-2 py-1.5"> horas</label>
+                <label class="text-sm flex items-center gap-2"><input type="checkbox" name="requiere_fisico" checked> Requiere respaldo físico</label>
+                <label class="text-sm flex items-center gap-2"><input type="checkbox" name="requiere_nube"> Requiere respaldo en nube</label>
+                <input type="hidden" name="activo" value="1">
+                <button class="col-span-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 rounded-xl text-sm">Agregar</button>
+            </form>
+        </div>
+
+        <div class="bg-white rounded-3xl shadow-lg shadow-indigo-100/50 border border-indigo-50 p-6 text-sm text-slate-600 space-y-3">
+            <h3 class="text-lg font-extrabold text-slate-800">Cómo instalar el script en cada PC</h3>
+            <ol class="list-decimal ml-5 space-y-1.5">
+                <li>Descargue el script (ya trae la dirección de la app y la llave de esta instalación).</li>
+                <li>Ábralo con el Bloc de notas y ajuste la sección <b>CONFIGURACIÓN</b>: carpetas a respaldar, disco o carpeta de red (<b>físico</b>) y carpeta de OneDrive/Drive (<b>nube</b>).</li>
+                <li>Pruébelo una vez en PowerShell: <code class="bg-slate-100 px-1.5 py-0.5 rounded text-xs">powershell -ExecutionPolicy Bypass -File .\respaldo_olamtex.ps1</code></li>
+                <li>Prográmelo a diario: <code class="bg-slate-100 px-1.5 py-0.5 rounded text-xs">… -File .\respaldo_olamtex.ps1 -Instalar -Hora 18:30</code></li>
+            </ol>
+            <p>Cada ejecución reporta aquí fecha, tamaño y resultado. Si una estación no reporta dentro de su frecuencia, pasa a <b class="text-amber-600">Atrasada</b> y luego a <b class="text-rose-600">Vencida</b>, y aparece como alerta en el panel de tickets.</p>
+            <div class="bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs">
+                <div class="font-bold text-slate-700 mb-1">Llave de reporte de los scripts</div>
+                <div class="font-mono break-all text-slate-500">{{ token[:6] }}••••••••••••{{ token[-4:] }}</div>
+                <form action="/admin/respaldos/token/regenerar" method="POST" class="mt-2" onsubmit="return confirm('Al regenerar la llave, los scripts ya instalados dejarán de reportar hasta que se descarguen de nuevo. ¿Continuar?');">
+                    <button class="text-rose-600 hover:underline font-bold">Regenerar llave</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

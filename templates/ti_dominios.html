@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+
+{% block title %}Dominios y Hosting - TicketsApp{% endblock %}
+
+{% block content %}
+{% set campo = "border border-slate-200 rounded-xl px-3 py-2 text-sm w-full" %}
+<div class="space-y-6">
+    <div class="bg-white rounded-3xl shadow-lg shadow-indigo-100/50 border border-indigo-50 p-6 sm:p-8">
+        <h2 class="text-3xl font-extrabold text-slate-800 tracking-tight">Dominios y Hosting</h2>
+        <p class="text-sm text-slate-500 mt-1">Control de vencimientos. El panel de tickets avisa a los 60, 30 y 7 días para no perder el dominio ni el correo corporativo.</p>
+    </div>
+
+    <div class="bg-white rounded-3xl shadow-lg shadow-indigo-100/50 border border-indigo-50 p-4 sm:p-6">
+        <div class="overflow-x-auto rounded-2xl border border-slate-100">
+            <table class="min-w-full text-sm text-left">
+                <thead class="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider">
+                    <tr><th class="px-4 py-3">Dominio / servicio</th><th class="px-4 py-3">Proveedor</th><th class="px-4 py-3">Vence</th><th class="px-4 py-3">Estado</th><th class="px-4 py-3">Responsable</th><th class="px-4 py-3"></th></tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100">
+                {% for f in filas %}
+                    {% set d = f.d %}
+                    <tr class="align-top {% if f.nivel in ['vencido','critico'] %}bg-rose-50/40{% elif f.nivel == 'alto' %}bg-orange-50/40{% endif %}">
+                        <td class="px-4 py-3">
+                            <div class="font-bold text-slate-800">{{ d.nombre }}</div>
+                            <div class="text-xs text-slate-400">{{ d.tipo }}{% if d.servicios %} · {{ d.servicios }}{% endif %}</div>
+                            {% if d.notas %}<div class="text-xs text-slate-500 mt-1">{{ d.notas }}</div>{% endif %}
+                        </td>
+                        <td class="px-4 py-3 text-slate-600">{{ d.proveedor or '—' }}{% if d.costo_anual %}<div class="text-xs text-slate-400">${{ "{:,}".format(d.costo_anual).replace(",", ".") }} / año</div>{% endif %}</td>
+                        <td class="px-4 py-3 whitespace-nowrap font-semibold">{{ d.fecha_vencimiento.strftime('%d/%m/%Y') if d.fecha_vencimiento else '—' }}
+                            {% if d.renovacion_automatica %}<div class="text-xs font-normal text-emerald-600">Renovación automática</div>{% endif %}</td>
+                        <td class="px-4 py-3 whitespace-nowrap">
+                            {% if f.nivel == 'vencido' %}<span class="px-2.5 py-1 rounded-full text-xs font-bold bg-rose-600 text-white">Vencido hace {{ -f.dias }} d</span>
+                            {% elif f.nivel == 'critico' %}<span class="px-2.5 py-1 rounded-full text-xs font-bold bg-rose-100 text-rose-700 border border-rose-200">{{ f.dias }} días</span>
+                            {% elif f.nivel == 'alto' %}<span class="px-2.5 py-1 rounded-full text-xs font-bold bg-orange-100 text-orange-700 border border-orange-200">{{ f.dias }} días</span>
+                            {% elif f.nivel == 'medio' %}<span class="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-700 border border-amber-200">{{ f.dias }} días</span>
+                            {% else %}<span class="px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700 border border-emerald-200">{{ f.dias }} días</span>{% endif %}
+                        </td>
+                        <td class="px-4 py-3 text-slate-600">{{ d.responsable or '—' }}</td>
+                        <td class="px-4 py-3 text-right whitespace-nowrap">
+                            <form action="/admin/dominios/{{ d.id }}/renovar" method="POST" class="inline" onsubmit='return confirm({{ ("¿Confirmar que " ~ d.nombre ~ " ya se renovó? La fecha se moverá un año.")|tojson }});'>
+                                <input type="hidden" name="anios" value="1">
+                                <button class="text-xs font-bold text-emerald-600 hover:underline">Renovado +1 año</button>
+                            </form>
+                            <button type="button" onclick='editar({{ {"id": d.id, "nombre": d.nombre, "tipo": d.tipo, "proveedor": d.proveedor or "", "fecha": d.fecha_vencimiento.isoformat() if d.fecha_vencimiento else "", "auto": d.renovacion_automatica, "responsable": d.responsable or "", "costo": d.costo_anual or "", "servicios": d.servicios or "", "notas": d.notas or ""}|tojson }})' class="ml-2 text-xs font-bold text-indigo-600 hover:underline">Editar</button>
+                            <form action="/admin/dominios/{{ d.id }}/delete" method="POST" class="inline" onsubmit="return confirm('¿Eliminar este registro?');"><button class="ml-2 text-xs font-bold text-rose-500 hover:underline">Eliminar</button></form>
+                        </td>
+                    </tr>
+                {% else %}
+                    <tr><td colspan="6" class="text-center py-10 text-slate-400">Sin dominios registrados. Agregue el dominio de la empresa y su hosting abajo.</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div id="formulario" class="bg-white rounded-3xl shadow-lg shadow-indigo-100/50 border border-indigo-50 p-6 sm:p-8">
+        <h3 id="form-titulo" class="text-xl font-extrabold text-slate-800 mb-4">Agregar dominio o servicio</h3>
+        <form action="/admin/dominios/guardar" method="POST" class="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <input type="hidden" name="dominio_id" id="f-id">
+            <label class="text-xs font-bold text-slate-500">Nombre<input name="nombre" id="f-nombre" placeholder="olamtex.com" class="{{ campo }} mt-1" required></label>
+            <label class="text-xs font-bold text-slate-500">Tipo
+                <select name="tipo" id="f-tipo" class="{{ campo }} mt-1"><option>Dominio</option><option>Hosting</option><option>Correo</option><option>Certificado SSL</option><option>Otro</option></select>
+            </label>
+            <label class="text-xs font-bold text-slate-500">Proveedor<input name="proveedor" id="f-proveedor" placeholder="GoDaddy, Hostinger…" class="{{ campo }} mt-1"></label>
+            <label class="text-xs font-bold text-slate-500">Fecha de vencimiento<input type="date" name="fecha_vencimiento" id="f-fecha" class="{{ campo }} mt-1" required></label>
+            <label class="text-xs font-bold text-slate-500">Responsable<input name="responsable" id="f-responsable" class="{{ campo }} mt-1"></label>
+            <label class="text-xs font-bold text-slate-500">Costo anual (COP)<input name="costo_anual" id="f-costo" inputmode="numeric" class="{{ campo }} mt-1"></label>
+            <label class="text-xs font-bold text-slate-500">Servicios que dependen<input name="servicios" id="f-servicios" placeholder="Correo corporativo, página web" class="{{ campo }} mt-1"></label>
+            <label class="text-xs font-bold text-slate-500 flex items-center gap-2 mt-5"><input type="checkbox" name="renovacion_automatica" id="f-auto"> Tiene renovación automática</label>
+            <label class="text-xs font-bold text-slate-500 sm:col-span-2 lg:col-span-4">Notas<input name="notas" id="f-notas" placeholder="Tarjeta con la que se paga, cuenta del proveedor (la clave va en la bóveda)…" class="{{ campo }} mt-1"></label>
+            <div class="sm:col-span-2 lg:col-span-4"><button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 px-6 rounded-xl text-sm">Guardar</button></div>
+        </form>
+    </div>
+</div>
+
+<script>
+function editar(d) {
+    document.getElementById('form-titulo').textContent = 'Editar ' + d.nombre;
+    document.getElementById('f-id').value = d.id;
+    document.getElementById('f-nombre').value = d.nombre;
+    document.getElementById('f-tipo').value = d.tipo;
+    document.getElementById('f-proveedor').value = d.proveedor;
+    document.getElementById('f-fecha').value = d.fecha;
+    document.getElementById('f-auto').checked = d.auto;
+    document.getElementById('f-responsable').value = d.responsable;
+    document.getElementById('f-costo').value = d.costo;
+    document.getElementById('f-servicios').value = d.servicios;
+    document.getElementById('f-notas').value = d.notas;
+    document.getElementById('formulario').scrollIntoView({ behavior: 'smooth' });
+}
+</script>
+{% endblock %}

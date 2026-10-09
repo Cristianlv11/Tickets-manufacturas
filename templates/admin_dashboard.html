@@ -111,6 +111,26 @@
 
 <div class="space-y-8">
 
+    {% if alertas_ti %}
+    <!-- Alertas de Gestión TI: dominios por vencer y respaldos atrasados -->
+    <div class="bg-white rounded-3xl shadow-lg shadow-rose-100/50 border border-rose-100 p-5 sm:p-6">
+        <h3 class="text-sm font-extrabold uppercase tracking-wider text-rose-700 mb-3 flex items-center gap-2">
+            <span class="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse"></span> Alertas de TI ({{ alertas_ti|length }})
+        </h3>
+        <div class="grid gap-2">
+            {% for a in alertas_ti %}
+            <a href="{{ a.url }}" class="flex flex-col sm:flex-row sm:items-center justify-between gap-1 rounded-xl px-4 py-2.5 border transition-colors
+                {% if a.nivel == 'critico' %}bg-rose-50 border-rose-200 hover:bg-rose-100 text-rose-800
+                {% elif a.nivel == 'alto' %}bg-orange-50 border-orange-200 hover:bg-orange-100 text-orange-800
+                {% else %}bg-amber-50 border-amber-200 hover:bg-amber-100 text-amber-800{% endif %}">
+                <span class="font-bold text-sm">{{ a.titulo }}</span>
+                <span class="text-xs opacity-80">{{ a.detalle }}</span>
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
     <!-- Tarjeta Principal: Título, Métricas y Filtros -->
     <div class="bg-white rounded-3xl shadow-lg shadow-indigo-100/50 border border-indigo-50 p-6 sm:p-8">
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">

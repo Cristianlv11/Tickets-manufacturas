@@ -5,8 +5,6 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from datetime import datetime, timedelta
-from jose import jwt, JWTError
-from passlib.context import CryptContext
 from typing import Optional, List
 import io
 import json
@@ -16,6 +14,11 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 import models
 from database import engine, get_db, SessionLocal
 from equipos_seed import EQUIPOS_OLAMTEX
+from security import (
+    verify_password, get_password_hash, create_access_token,
+    get_current_user, get_current_admin, COOKIE_SECURE,
+)
+import gestion_ti
 
 from contextlib import asynccontextmanager
 
@@ -105,45 +108,7 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 templates = Jinja2Templates(directory="templates")
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
-SECRET_KEY = "super_secret_key_change_in_production"
-ALGORITHM = "HS256"
-
-def verify_password(plain_password, hashed_password):
-    return pwd_context.verify(plain_password, hashed_password)
-
-def get_password_hash(password):
-    return pwd_context.hash(password)
-
-def create_access_token(data: dict):
-    to_encode = data.copy()
-    expire = datetime.utcnow() + timedelta(hours=24)
-    to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    return encoded_jwt
-
-def get_current_user(request: Request, db: Session = Depends(get_db)):
-    token = request.cookies.get("access_token")
-    if not token:
-        return None
-    try:
-        # Check for Bearer prefix and strip it if exists, but we are setting just the token
-        if token.startswith("Bearer "):
-            token = token[7:]
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        username: str = payload.get("sub")
-        if username is None:
-            return None
-        user = db.query(models.User).filter(models.User.username == username).first()
-        return user
-    except JWTError:
-        return None
-
-def get_current_admin(user: models.User = Depends(get_current_user)):
-    if not user or user.role != models.UserRole.ADMIN:
-        return None
-    return user
+app.include_router(gestion_ti.router)
 
 @app.get("/", response_class=HTMLResponse)
 def root_redirect(request: Request, user: models.User = Depends(get_current_user)):
@@ -171,13 +136,14 @@ def login_post(
     access_token = create_access_token(data={"sub": user.username})
     
     response = RedirectResponse(url="/", status_code=status.HTTP_302_FOUND)
-    response.set_cookie(key="access_token", value=f"{access_token}", httponly=True)
+    response.set_cookie(key="access_token", value=f"{access_token}", httponly=True, samesite="lax", secure=COOKIE_SECURE)
     return response
 
 @app.get("/logout")
 def logout():
     response = RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
     response.delete_cookie("access_token")
+    response.delete_cookie("boveda_unlock", path="/admin/boveda")
     return response
 
 EMPLEADOS_DIRECTORIO = {
@@ -307,6 +273,7 @@ def admin_dashboard(request: Request, user: models.User = Depends(get_current_ad
             "tickets_nuevos": tickets_nuevos,
             "tickets_proceso": tickets_proceso,
             "tickets_cerrados": tickets_cerrados,
+            "alertas_ti": gestion_ti.calcular_alertas(db),
             "user": user
         }
     )
@@ -494,7 +461,9 @@ def delete_ticket(
     return RedirectResponse(url="/admin", status_code=status.HTTP_302_FOUND)
 
 @app.get("/attachments/{adjunto_id}")
-def get_attachment(adjunto_id: int, db: Session = Depends(get_db)):
+def get_attachment(adjunto_id: int, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    if not user:
+        raise HTTPException(status_code=401, detail="No autenticado")
     adjunto = db.query(models.TicketAdjunto).filter(models.TicketAdjunto.id == adjunto_id).first()
     if not adjunto:
         raise HTTPException(status_code=404, detail="Archivo no encontrado")

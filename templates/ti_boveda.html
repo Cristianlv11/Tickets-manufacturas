@@ -1,0 +1,208 @@
+{% extends "base.html" %}
+
+{% block title %}Bóveda de Contraseñas - TicketsApp{% endblock %}
+
+{% block content %}
+{% set campo = "border border-slate-200 rounded-xl px-3 py-2 text-sm w-full" %}
+<div class="space-y-6">
+    <div class="bg-white rounded-3xl shadow-lg shadow-indigo-100/50 border border-indigo-50 p-6 sm:p-8">
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+                <h2 class="text-3xl font-extrabold text-slate-800 tracking-tight">Bóveda de Contraseñas</h2>
+                <p class="text-sm text-slate-500 mt-1">Correos, software, aplicativos y cámaras. Las claves se guardan cifradas y cada consulta queda registrada.</p>
+            </div>
+            {% if desbloqueada %}
+            <form action="/admin/boveda/bloquear" method="POST" class="flex items-center gap-3">
+                <span class="text-xs text-slate-500">Se bloquea sola a los {{ minutos }} min</span>
+                <button class="bg-slate-800 hover:bg-slate-900 text-white font-bold py-2.5 px-4 rounded-xl text-sm">🔒 Bloquear ahora</button>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+
+    {% if not configurada %}
+    <div class="bg-rose-50 border border-rose-200 text-rose-800 rounded-2xl p-5 text-sm">
+        <b>La bóveda no está habilitada.</b> Falta la variable de entorno <code class="bg-white px-1.5 rounded">VAULT_KEY</code> en el servidor (Railway). Sin ella no se puede cifrar ni leer ninguna clave.
+    </div>
+
+    {% elif not desbloqueada %}
+    <div class="max-w-md mx-auto bg-white rounded-3xl shadow-lg shadow-indigo-100/50 border border-indigo-50 p-8 text-center">
+        <div class="text-5xl mb-3">🔐</div>
+        <h3 class="text-xl font-extrabold text-slate-800">Bóveda bloqueada</h3>
+        {% if clave_por_defecto or error == 'default' %}
+            <p class="text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded-xl p-3 mt-4">Su usuario todavía tiene la contraseña por defecto. Por seguridad, la bóveda no se abre hasta que la cambie.</p>
+            <a href="/admin/cuenta" class="inline-block mt-4 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 px-5 rounded-xl text-sm">Cambiar mi contraseña</a>
+        {% else %}
+            <p class="text-sm text-slate-500 mt-2">Confirme su contraseña de la app para abrirla.</p>
+            {% if error == 'clave' %}<p class="text-sm text-rose-600 font-bold mt-3">Contraseña incorrecta. El intento quedó registrado.</p>{% endif %}
+            <form action="/admin/boveda/desbloquear" method="POST" class="mt-5 space-y-3">
+                <input type="password" name="password" autocomplete="current-password" placeholder="Contraseña de {{ user.username }}" class="{{ campo }}" required autofocus>
+                <button class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 rounded-xl text-sm">Desbloquear</button>
+            </form>
+        {% endif %}
+    </div>
+
+    {% else %}
+    <div class="bg-white rounded-3xl shadow-lg shadow-indigo-100/50 border border-indigo-50 p-4 sm:p-6">
+        <div class="flex flex-col sm:flex-row gap-3 mb-4">
+            <input id="buscar" type="search" placeholder="Buscar servicio, usuario o categoría…" class="{{ campo }} sm:max-w-sm">
+            <button onclick="abrirFormulario()" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-xl text-sm whitespace-nowrap">+ Nueva credencial</button>
+        </div>
+        <div class="overflow-x-auto rounded-2xl border border-slate-100">
+            <table class="min-w-full text-sm text-left">
+                <thead class="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider">
+                    <tr><th class="px-4 py-3">Categoría</th><th class="px-4 py-3">Servicio</th><th class="px-4 py-3">Usuario</th><th class="px-4 py-3">Contraseña</th><th class="px-4 py-3">Actualizada</th><th class="px-4 py-3"></th></tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100">
+                {% for c in credenciales %}
+                    <tr class="fila-cred align-top" data-buscar="{{ (c.categoria ~ ' ' ~ c.servicio ~ ' ' ~ (c.usuario or '') ~ ' ' ~ (c.url or ''))|lower }}">
+                        <td class="px-4 py-3"><span class="px-2 py-0.5 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700">{{ c.categoria }}</span></td>
+                        <td class="px-4 py-3">
+                            <div class="font-bold text-slate-800">{{ c.servicio }}</div>
+                            {% if c.url %}<a href="{{ c.url if '://' in c.url else 'https://' ~ c.url }}" target="_blank" rel="noopener noreferrer" class="text-xs text-indigo-600 hover:underline break-all">{{ c.url }}</a>{% endif %}
+                            {% if c.equipo_id and equipos.get(c.equipo_id) %}<div class="text-xs text-slate-400">Equipo: {{ equipos[c.equipo_id] }}</div>{% endif %}
+                            <div id="notas-{{ c.id }}" class="hidden text-xs text-slate-600 bg-amber-50 border border-amber-100 rounded-lg p-2 mt-2 whitespace-pre-wrap"></div>
+                        </td>
+                        <td class="px-4 py-3">
+                            {% if c.usuario %}<button type="button" onclick='copiar({{ c.usuario|tojson }}, this)' class="font-mono text-slate-700 hover:text-indigo-600" title="Copiar usuario">{{ c.usuario }}</button>{% endif %}
+                        </td>
+                        <td class="px-4 py-3 whitespace-nowrap">
+                            <span id="clave-{{ c.id }}" class="font-mono text-slate-400">••••••••</span>
+                            <button type="button" onclick="revelar({{ c.id }}, this)" class="ml-2 text-xs font-bold text-indigo-600 hover:underline">Ver</button>
+                            <button type="button" onclick="copiarClave({{ c.id }}, this)" class="ml-1 text-xs font-bold text-slate-500 hover:underline">Copiar</button>
+                        </td>
+                        <td class="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">{{ c.fecha_actualizacion.strftime('%d/%m/%Y') if c.fecha_actualizacion else '' }}<div class="text-slate-400">{{ c.actualizado_por or '' }}</div></td>
+                        <td class="px-4 py-3 text-right whitespace-nowrap">
+                            <button type="button" onclick='abrirFormulario({{ {"id": c.id, "categoria": c.categoria, "servicio": c.servicio, "usuario": c.usuario or "", "url": c.url or "", "equipo_id": c.equipo_id or ""}|tojson }})' class="text-xs font-bold text-indigo-600 hover:underline">Editar</button>
+                            <form action="/admin/boveda/{{ c.id }}/delete" method="POST" class="inline" onsubmit='return confirm({{ ("¿Eliminar la credencial de " ~ c.servicio ~ "?")|tojson }});'><button class="ml-2 text-xs font-bold text-rose-500 hover:underline">Eliminar</button></form>
+                        </td>
+                    </tr>
+                {% else %}
+                    <tr><td colspan="6" class="text-center py-10 text-slate-400">La bóveda está vacía. Agregue credenciales o importe un CSV.</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div id="formulario" class="hidden bg-white rounded-3xl shadow-lg shadow-indigo-100/50 border-2 border-indigo-200 p-6 sm:p-8">
+        <h3 id="form-titulo" class="text-xl font-extrabold text-slate-800 mb-4">Nueva credencial</h3>
+        <form action="/admin/boveda/guardar" method="POST" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-3" autocomplete="off">
+            <input type="hidden" name="credencial_id" id="f-id">
+            <label class="text-xs font-bold text-slate-500">Categoría
+                <select name="categoria" id="f-categoria" class="{{ campo }} mt-1">{% for cat in categorias %}<option>{{ cat }}</option>{% endfor %}</select>
+            </label>
+            <label class="text-xs font-bold text-slate-500">Servicio / sistema<input name="servicio" id="f-servicio" class="{{ campo }} mt-1" required placeholder="ej. Correo gerencia, Siigo, NVR cámaras"></label>
+            <label class="text-xs font-bold text-slate-500">Usuario<input name="usuario" id="f-usuario" class="{{ campo }} mt-1" autocomplete="off"></label>
+            <label class="text-xs font-bold text-slate-500">Contraseña <span id="f-clave-ayuda" class="font-normal text-slate-400"></span>
+                <div class="flex gap-2 mt-1">
+                    <input name="clave" id="f-clave" type="password" class="{{ campo }} font-mono" autocomplete="new-password">
+                    <button type="button" onclick="generar()" class="text-xs font-bold bg-slate-100 hover:bg-slate-200 rounded-xl px-3" title="Generar contraseña segura">Generar</button>
+                </div>
+            </label>
+            <label class="text-xs font-bold text-slate-500">URL / IP<input name="url" id="f-url" class="{{ campo }} mt-1"></label>
+            <label class="text-xs font-bold text-slate-500">Equipo relacionado
+                <select name="equipo_id" id="f-equipo" class="{{ campo }} mt-1"><option value="">—</option>{% for eid, nombre in equipos.items() %}<option value="{{ eid }}">{{ nombre }}</option>{% endfor %}</select>
+            </label>
+            <label class="text-xs font-bold text-slate-500 sm:col-span-2 lg:col-span-3">Notas (se guardan cifradas) <span id="f-notas-ayuda" class="font-normal text-slate-400"></span><textarea name="notas" id="f-notas" rows="2" class="{{ campo }} mt-1"></textarea></label>
+            <div class="sm:col-span-2 lg:col-span-3 flex gap-3">
+                <button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 px-6 rounded-xl text-sm">Guardar</button>
+                <button type="button" onclick="document.getElementById('formulario').classList.add('hidden')" class="text-sm font-bold text-slate-500">Cancelar</button>
+            </div>
+        </form>
+    </div>
+
+    <div class="grid lg:grid-cols-2 gap-6">
+        <div class="bg-white rounded-3xl shadow-lg shadow-indigo-100/50 border border-indigo-50 p-6 text-sm">
+            <h3 class="text-lg font-extrabold text-slate-800 mb-2">Migrar desde documentos de texto</h3>
+            <p class="text-slate-500 mb-3">Pase las claves a un Excel con las columnas <code class="bg-slate-100 px-1 rounded">categoria, servicio, usuario, clave, url, notas</code>, guárdelo como CSV y súbalo. Después <b>borre el documento original</b> y vacíe la papelera.</p>
+            <form action="/admin/boveda/importar" method="POST" enctype="multipart/form-data" class="flex flex-col sm:flex-row gap-3">
+                <input type="file" name="archivo" accept=".csv,text/csv" required class="text-sm">
+                <button class="bg-slate-800 hover:bg-slate-900 text-white font-bold py-2 px-4 rounded-xl text-sm">Importar CSV</button>
+            </form>
+        </div>
+        <div class="bg-white rounded-3xl shadow-lg shadow-indigo-100/50 border border-indigo-50 p-6 text-sm">
+            <h3 class="text-lg font-extrabold text-slate-800 mb-2">Registro de accesos</h3>
+            <div class="max-h-64 overflow-y-auto divide-y divide-slate-100">
+            {% for a in accesos %}
+                <div class="py-1.5 flex justify-between gap-3 text-xs">
+                    <span><b class="{% if a.accion == 'Intento fallido' %}text-rose-600{% elif a.accion in ['Eliminar'] %}text-rose-500{% else %}text-slate-700{% endif %}">{{ a.accion }}</b> {{ a.servicio or '' }} · {{ a.usuario_app }}</span>
+                    <span class="text-slate-400 whitespace-nowrap">{{ a.fecha.strftime('%d/%m %I:%M %p') }}</span>
+                </div>
+            {% else %}
+                <div class="text-slate-400 text-xs">Sin accesos registrados</div>
+            {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+{% if desbloqueada %}
+<script>
+const cache = {};
+async function obtener(id) {
+    if (cache[id]) return cache[id];
+    const r = await fetch(`/admin/boveda/${id}/revelar`, { method: 'POST' });
+    if (r.status === 401) { alert('La bóveda se bloqueó. Vuelva a desbloquearla.'); location.reload(); return null; }
+    if (!r.ok) return null;
+    cache[id] = await r.json();
+    setTimeout(() => delete cache[id], 60000);
+    return cache[id];
+}
+async function revelar(id, btn) {
+    const span = document.getElementById('clave-' + id);
+    const notas = document.getElementById('notas-' + id);
+    if (btn.dataset.visible) {
+        span.textContent = '••••••••'; span.classList.add('text-slate-400'); notas.classList.add('hidden');
+        btn.textContent = 'Ver'; delete btn.dataset.visible; return;
+    }
+    const d = await obtener(id);
+    if (!d) return;
+    span.textContent = d.clave || '(vacía)'; span.classList.remove('text-slate-400');
+    if (d.notas) { notas.textContent = d.notas; notas.classList.remove('hidden'); }
+    btn.textContent = 'Ocultar'; btn.dataset.visible = '1';
+    setTimeout(() => { if (btn.dataset.visible) revelar(id, btn); }, 30000);
+}
+async function copiar(texto, btn) {
+    await navigator.clipboard.writeText(texto);
+    const t = btn.textContent; btn.textContent = '✓ Copiado'; setTimeout(() => btn.textContent = t, 1200);
+}
+async function copiarClave(id, btn) {
+    const d = await obtener(id);
+    if (!d) return;
+    await copiar(d.clave || '', btn);
+    setTimeout(() => navigator.clipboard.writeText('').catch(() => {}), 30000);
+}
+function abrirFormulario(c) {
+    c = c || {};
+    document.getElementById('formulario').classList.remove('hidden');
+    document.getElementById('form-titulo').textContent = c.id ? 'Editar credencial' : 'Nueva credencial';
+    document.getElementById('f-id').value = c.id || '';
+    document.getElementById('f-categoria').value = c.categoria || 'Correo';
+    document.getElementById('f-servicio').value = c.servicio || '';
+    document.getElementById('f-usuario').value = c.usuario || '';
+    document.getElementById('f-url').value = c.url || '';
+    document.getElementById('f-equipo').value = c.equipo_id || '';
+    document.getElementById('f-clave').value = '';
+    document.getElementById('f-notas').value = '';
+    document.getElementById('f-clave-ayuda').textContent = c.id ? '(en blanco = no cambia)' : '';
+    document.getElementById('f-notas-ayuda').textContent = c.id ? '— en blanco = no cambia' : '';
+    document.getElementById('formulario').scrollIntoView({ behavior: 'smooth' });
+}
+function generar() {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%*-_+=?';
+    const v = new Uint32Array(18); crypto.getRandomValues(v);
+    const campo = document.getElementById('f-clave');
+    campo.value = Array.from(v, n => chars[n % chars.length]).join('');
+    campo.type = 'text';
+}
+document.getElementById('buscar').addEventListener('input', e => {
+    const q = e.target.value.toLowerCase().trim();
+    document.querySelectorAll('.fila-cred').forEach(tr => tr.classList.toggle('hidden', q && !tr.dataset.buscar.includes(q)));
+});
+// Bloqueo automático en pantalla cuando vence la sesión de la bóveda
+setTimeout(() => location.reload(), {{ minutos }} * 60 * 1000 + 2000);
+</script>
+{% endif %}
+{% endblock %}

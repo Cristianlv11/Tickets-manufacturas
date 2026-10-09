@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+
+{% block title %}Activos Tecnológicos - TicketsApp{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <div class="bg-white rounded-3xl shadow-lg shadow-indigo-100/50 border border-indigo-50 p-6 sm:p-8">
+        <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6">
+            <div>
+                <h2 class="text-3xl font-extrabold text-slate-800 tracking-tight">Activos Tecnológicos</h2>
+                <p class="text-sm text-slate-500 mt-1">Hoja de vida única por equipo: inventario, bitácora de mantenimiento e historial de software.</p>
+            </div>
+            <div class="flex flex-wrap gap-2.5">
+                <a href="/admin/equipos" class="inline-flex items-center gap-2 bg-white hover:bg-indigo-50 text-indigo-700 border border-indigo-200 font-bold py-2.5 px-4 rounded-xl text-sm">Mapa de red / editar equipos</a>
+                <a href="/admin/activos/exportar" class="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 px-4 rounded-xl shadow-md shadow-emerald-200 text-sm">Exportar a Excel</a>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+            <input id="f-texto" type="search" placeholder="Buscar equipo, usuario, IP, serial…" class="col-span-2 border border-slate-200 rounded-xl px-3 py-2 text-sm">
+            <select id="f-piso" class="border border-slate-200 rounded-xl px-3 py-2 text-sm"><option value="">Todos los pisos</option>{% for p in pisos %}<option>{{ p }}</option>{% endfor %}</select>
+            <select id="f-tipo" class="border border-slate-200 rounded-xl px-3 py-2 text-sm"><option value="">Todos los tipos</option>{% for t in tipos %}<option>{{ t }}</option>{% endfor %}</select>
+            <select id="f-estado" class="border border-slate-200 rounded-xl px-3 py-2 text-sm"><option value="">Todos los estados</option>{% for e in estados %}<option>{{ e }}</option>{% endfor %}</select>
+            <select id="f-especial" class="border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                <option value="">Sin filtro adicional</option>
+                <option value="sin_mant">Sin mantenimiento en 6 meses</option>
+                <option value="nunca_mant">Nunca ha tenido mantenimiento</option>
+                <option value="garantia">Con garantía vigente</option>
+                <option value="sin_serial">Sin serial registrado</option>
+                <option value="respaldo">Respaldo con problema</option>
+            </select>
+        </div>
+        <div class="text-xs text-slate-500 mt-3"><span id="conteo">0</span> equipo(s)</div>
+    </div>
+
+    <div class="bg-white rounded-3xl shadow-lg shadow-indigo-100/50 border border-indigo-50 p-4 sm:p-6">
+        <div class="overflow-x-auto rounded-2xl border border-slate-100">
+            <table class="min-w-full bg-white text-left text-sm">
+                <thead class="bg-slate-50 text-slate-500 border-b border-slate-100">
+                    <tr>
+                        <th class="py-3 px-4 uppercase font-bold text-xs tracking-wider">Equipo</th>
+                        <th class="py-3 px-4 uppercase font-bold text-xs tracking-wider">Usuario</th>
+                        <th class="py-3 px-4 uppercase font-bold text-xs tracking-wider">Red</th>
+                        <th class="py-3 px-4 uppercase font-bold text-xs tracking-wider">Serial / placa</th>
+                        <th class="py-3 px-4 uppercase font-bold text-xs tracking-wider">Estado</th>
+                        <th class="py-3 px-4 uppercase font-bold text-xs tracking-wider">Último mant.</th>
+                        <th class="py-3 px-4 uppercase font-bold text-xs tracking-wider">Software</th>
+                        <th class="py-3 px-4 uppercase font-bold text-xs tracking-wider">Respaldo</th>
+                    </tr>
+                </thead>
+                <tbody id="tabla" class="divide-y divide-slate-100"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+const FILAS = {{ filas | tojson }};
+const RESP = {
+    ok: ['Al día', 'bg-emerald-100 text-emerald-700'], atraso: ['Atrasado', 'bg-amber-100 text-amber-700'],
+    vencido: ['Vencido', 'bg-rose-100 text-rose-700'], error: ['Falló', 'bg-rose-100 text-rose-700'],
+    sin_datos: ['Sin reportes', 'bg-slate-200 text-slate-700'], no_aplica: ['No aplica', 'bg-slate-50 text-slate-400'],
+};
+const ESTADO = { 'Activo': 'bg-emerald-50 text-emerald-700', 'En reparación': 'bg-amber-50 text-amber-700', 'En bodega': 'bg-slate-100 text-slate-600', 'De baja': 'bg-rose-50 text-rose-700' };
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fecha = iso => iso ? iso.split('-').reverse().join('/') : '';
+
+function pintar() {
+    const texto = document.getElementById('f-texto').value.toLowerCase().trim();
+    const piso = document.getElementById('f-piso').value;
+    const tipo = document.getElementById('f-tipo').value;
+    const estado = document.getElementById('f-estado').value;
+    const especial = document.getElementById('f-especial').value;
+    const filas = FILAS.filter(f => {
+        if (piso && f.piso !== piso) return false;
+        if (tipo && f.tipo !== tipo) return false;
+        if (estado && f.estado !== estado) return false;
+        if (especial === 'sin_mant' && !(f.dias_sin_mantenimiento === null || f.dias_sin_mantenimiento > 180)) return false;
+        if (especial === 'nunca_mant' && f.total_mantenimientos > 0) return false;
+        if (especial === 'garantia' && !f.garantia_vigente) return false;
+        if (especial === 'sin_serial' && f.serial) return false;
+        if (especial === 'respaldo' && !['vencido', 'error', 'sin_datos', 'atraso'].includes(f.respaldo)) return false;
+        if (texto) {
+            const blob = [f.nombre, f.usuario, f.cargo, f.hostname, f.ip, f.serial, f.placa, f.marca, f.so, f.hardware].join(' ').toLowerCase();
+            if (!blob.includes(texto)) return false;
+        }
+        return true;
+    });
+    document.getElementById('conteo').textContent = filas.length;
+    document.getElementById('tabla').innerHTML = filas.map(f => {
+        const r = RESP[f.respaldo];
+        const mant = f.ultimo_mantenimiento
+            ? `<div class="font-semibold text-slate-700">${fecha(f.ultimo_mantenimiento)}</div><div class="text-xs ${f.dias_sin_mantenimiento > 180 ? 'text-rose-600 font-bold' : 'text-slate-400'}">${esc(f.ultimo_mantenimiento_tipo)} · hace ${f.dias_sin_mantenimiento} días</div>`
+            : '<span class="text-xs text-slate-400">Nunca</span>';
+        return `<tr class="hover:bg-indigo-50/40 cursor-pointer" onclick="location.href='/admin/activos/${encodeURIComponent(f.id)}'">
+            <td class="py-3 px-4"><a href="/admin/activos/${encodeURIComponent(f.id)}" class="font-bold text-indigo-600 hover:underline">${esc(f.nombre)}</a>
+                <div class="text-xs text-slate-400">${esc(f.tipo)} · ${esc(f.piso)}</div><div class="text-xs text-slate-400">${esc(f.marca)}</div></td>
+            <td class="py-3 px-4"><div class="text-slate-800">${esc(f.usuario)}</div><div class="text-xs text-slate-400">${esc(f.cargo)}</div></td>
+            <td class="py-3 px-4 font-mono text-xs"><div>${esc(f.hostname)}</div><div class="text-slate-400">${esc(f.ip)}</div></td>
+            <td class="py-3 px-4 text-xs">${f.serial ? esc(f.serial) : '<span class="text-slate-300">—</span>'}${f.placa ? `<div class="text-slate-400">Placa ${esc(f.placa)}</div>` : ''}${f.garantia_vigente ? `<div class="text-emerald-600 font-semibold">Garantía hasta ${fecha(f.garantia_hasta)}</div>` : ''}</td>
+            <td class="py-3 px-4"><span class="px-2 py-1 rounded-full text-xs font-bold ${ESTADO[f.estado] || ''}">${esc(f.estado)}</span></td>
+            <td class="py-3 px-4">${mant}</td>
+            <td class="py-3 px-4 text-xs text-slate-600">${f.total_software ? f.total_software + ' programa(s)' : '<span class="text-slate-300">—</span>'}</td>
+            <td class="py-3 px-4">${r ? `<span class="px-2 py-1 rounded-full text-xs font-bold ${r[1]}">${r[0]}</span>` : '<span class="text-slate-300 text-xs">—</span>'}</td>
+        </tr>`;
+    }).join('') || '<tr><td colspan="8" class="text-center py-10 text-slate-400">Ningún equipo coincide con los filtros</td></tr>';
+}
+['f-texto', 'f-piso', 'f-tipo', 'f-estado', 'f-especial'].forEach(id => document.getElementById(id).addEventListener('input', pintar));
+pintar();
+</script>
+{% endblock %}
