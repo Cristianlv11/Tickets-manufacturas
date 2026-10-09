@@ -352,6 +352,66 @@ async def respaldos_api_reporte(request: Request, db: Session = Depends(get_db))
     return {"status": "ok", "estacion": estacion.hostname, "registro_id": registro.id}
 
 
+@router.get("/admin/rustdesk/script")
+def rustdesk_descargar_script(request: Request, user=Depends(get_current_admin), db: Session = Depends(get_db)):
+    if not user:
+        return redirect("/login")
+    with open(os.path.join("scripts", "instalar_rustdesk.ps1"), encoding="utf-8") as f:
+        contenido = f.read()
+    base_url = str(request.base_url).rstrip("/")
+    if request.headers.get("x-forwarded-proto") == "https":
+        base_url = base_url.replace("http://", "https://", 1)
+    contenido = contenido.replace("__URL_APP__", base_url).replace("__TOKEN__", obtener_token_respaldos(db))
+    return Response(
+        content="﻿" + contenido.replace("\r\n", "\n").replace("\n", "\r\n"),
+        media_type="text/plain; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="instalar_rustdesk.ps1"'},
+    )
+
+
+@router.post("/api/boveda/rustdesk")
+async def rustdesk_api_registrar(request: Request, db: Session = Depends(get_db)):
+    """El instalador de cada PC deja aquí su ID y contraseña de RustDesk (solo crea/actualiza, nunca lee)."""
+    token = request.headers.get("x-backup-token", "")
+    if not secrets.compare_digest(token, obtener_token_respaldos(db)):
+        raise HTTPException(status_code=401, detail="Token inválido")
+    if not fernet():
+        raise HTTPException(status_code=503, detail="Bóveda no configurada")
+    try:
+        body = json.loads((await request.body()).decode("utf-8-sig"))
+    except (ValueError, UnicodeDecodeError):
+        raise HTTPException(status_code=400, detail="JSON inválido")
+    hostname = str(body.get("hostname") or "").strip().upper()[:60]
+    rid = re.sub(r"\D", "", str(body.get("id") or ""))
+    clave = str(body.get("password") or "")
+    if not hostname or not rid or len(clave) < 8:
+        raise HTTPException(status_code=400, detail="Faltan hostname, id o password")
+
+    eq = next((e for e in cargar_equipos(db) if (e.get("hostname") or "").upper() == hostname), None)
+    servicio = f"RustDesk · {hostname}" + (f" ({eq.get('usuario')})" if eq and eq.get("usuario") else "")
+    credencial = db.query(models.Credencial).filter(models.Credencial.servicio.like(f"RustDesk · {hostname}%")).first()
+    nueva = credencial is None
+    if nueva:
+        credencial = models.Credencial(fecha_creacion=ahora())
+        db.add(credencial)
+    credencial.categoria = "Equipo"
+    credencial.servicio = servicio
+    credencial.usuario = rid
+    credencial.clave_cifrada = cifrar(clave)
+    credencial.equipo_id = eq.get("id") if eq else None
+    credencial.notas_cifradas = cifrar(
+        f"ID RustDesk: {rid} | Instalado/actualizado por script el {ahora().strftime('%d/%m/%Y %I:%M %p')}"
+        f" | Versión: {str(body.get('version') or '')[:20]} | Usuario de Windows: {str(body.get('usuario_windows') or '')[:60]}")
+    credencial.actualizado_por = "script RustDesk"
+    credencial.fecha_actualizacion = ahora()
+    db.flush()
+    db.add(models.CredencialAcceso(credencial_id=credencial.id, servicio=servicio, usuario_app="script RustDesk",
+                                   accion="Crear" if nueva else "Editar",
+                                   ip=(request.headers.get("x-forwarded-for") or "")[:100], fecha=ahora()))
+    db.commit()
+    return {"status": "ok", "servicio": servicio, "nueva": nueva}
+
+
 # ---------------------------------------------------------------------------
 # Control de activos (hoja de vida por equipo)
 # ---------------------------------------------------------------------------
