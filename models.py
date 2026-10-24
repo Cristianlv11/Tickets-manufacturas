@@ -142,6 +142,34 @@ class ActivoFicha(Base):
     fecha_actualizacion = Column(DateTime, default=func.now(), onupdate=func.now())
 
 
+class ActivoGeneral(Base):
+    """Activo que no es un equipo de red (mobiliario, maquinaria, herramientas...). Su id en la hoja de vida es 'ag-<id>'."""
+    __tablename__ = "activos_generales"
+
+    id = Column(Integer, primary_key=True, index=True)
+    nombre = Column(String)
+    categoria = Column(String, nullable=True)
+    ubicacion = Column(String, nullable=True)
+    responsable = Column(String, nullable=True)
+    notas = Column(Text, nullable=True)
+    creado_por = Column(String, nullable=True)
+    fecha_creacion = Column(DateTime, default=func.now())
+
+
+class ActivoFoto(Base):
+    __tablename__ = "activo_fotos"
+
+    id = Column(Integer, primary_key=True, index=True)
+    equipo_id = Column(String, index=True)
+    nombre_archivo = Column(String)
+    tipo_contenido = Column(String)
+    archivo_bytes = Column(LargeBinary)
+    tamano = Column(Integer, default=0)
+    descripcion = Column(String, nullable=True)
+    subido_por = Column(String, nullable=True)
+    fecha_subida = Column(DateTime, default=func.now())
+
+
 class ActivoMantenimiento(Base):
     __tablename__ = "activo_mantenimientos"
 

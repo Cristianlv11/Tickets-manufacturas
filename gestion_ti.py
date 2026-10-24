@@ -36,6 +36,9 @@ TIPOS_ESTACION = ("Puesto de Trabajo", "Laptop", "Servidor")
 TIPOS_RESPALDO = ("Físico", "Nube")
 CATEGORIAS_CREDENCIAL = ["Correo", "Software", "Aplicativo", "Cámara / CCTV", "Hosting / Dominio", "Red / Wi-Fi", "Equipo", "Otro"]
 ESTADOS_ACTIVO = ["Activo", "En reparación", "En bodega", "De baja"]
+CATEGORIAS_ACTIVO = ["Mobiliario", "Maquinaria", "Equipo de oficina", "Herramienta", "Electrodoméstico", "Tecnología", "Vehículo", "Otro"]
+FOTO_MAX_BYTES = 10 * 1024 * 1024
+FOTO_MAX_POR_SUBIDA = 10
 BOVEDA_COOKIE = "boveda_unlock"
 BOVEDA_PATH = "/admin/boveda"
 BOVEDA_MINUTOS = 10
@@ -78,6 +81,47 @@ def cargar_equipos(db: Session):
         except Exception:
             pass
     return EQUIPOS_OLAMTEX
+
+
+def general_a_equipo(activo: models.ActivoGeneral):
+    """Presenta un activo general con las mismas claves que un equipo del inventario de red."""
+    return {
+        "id": f"ag-{activo.id}", "general": True, "nombre": activo.nombre or "",
+        "tipo": activo.categoria or "Activo general", "piso": activo.ubicacion or "",
+        "usuario": activo.responsable or "", "cargo": "", "notas": activo.notas or "",
+    }
+
+
+def id_general(equipo_id: str):
+    """'ag-12' -> 12; None si no es un activo general."""
+    if equipo_id.startswith("ag-") and equipo_id[3:].isdigit():
+        return int(equipo_id[3:])
+    return None
+
+
+def cargar_activos(db: Session):
+    """Equipos del inventario de red más los activos generales."""
+    generales = db.query(models.ActivoGeneral).order_by(models.ActivoGeneral.id).all()
+    return cargar_equipos(db) + [general_a_equipo(a) for a in generales]
+
+
+def guardar_fotos(db: Session, equipo_id: str, archivos, descripcion: str, usuario: str):
+    """Guarda las imágenes subidas; ignora archivos vacíos, que no sean imagen o demasiado grandes."""
+    guardadas = 0
+    for f in (archivos or [])[:FOTO_MAX_POR_SUBIDA]:
+        if not f or not f.filename:
+            continue
+        contenido = f.file.read()
+        tipo = (f.content_type or "").lower()
+        if not contenido or len(contenido) > FOTO_MAX_BYTES or not tipo.startswith("image/"):
+            continue
+        db.add(models.ActivoFoto(
+            equipo_id=equipo_id, nombre_archivo=f.filename, tipo_contenido=tipo, archivo_bytes=contenido,
+            tamano=len(contenido), descripcion=(descripcion or "").strip() or None,
+            subido_por=usuario, fecha_subida=ahora(),
+        ))
+        guardadas += 1
+    return guardadas
 
 
 def es_estacion(equipo):
@@ -417,8 +461,11 @@ async def rustdesk_api_registrar(request: Request, db: Session = Depends(get_db)
 # ---------------------------------------------------------------------------
 
 def consolidar_activos(db: Session):
-    equipos = cargar_equipos(db)
+    equipos = cargar_activos(db)
     fichas = {f.equipo_id: f for f in db.query(models.ActivoFicha).all()}
+    fotos = {}
+    for foto_id, eid in db.query(models.ActivoFoto.id, models.ActivoFoto.equipo_id).order_by(models.ActivoFoto.id).all():
+        fotos.setdefault(eid, []).append(foto_id)
     mantenimientos = {}
     for m in db.query(models.ActivoMantenimiento).order_by(models.ActivoMantenimiento.fecha.desc()).all():
         mantenimientos.setdefault(m.equipo_id, []).append(m)
@@ -458,6 +505,9 @@ def consolidar_activos(db: Session):
             "total_mantenimientos": len(mants),
             "total_software": len({s.nombre for s in software.get(eid, []) if s.accion != "Desinstalado"}),
             "respaldo": resp["nivel"] if resp else "",
+            "general": bool(eq.get("general")),
+            "fotos": len(fotos.get(eid, [])),
+            "foto_id": fotos[eid][0] if fotos.get(eid) else None,
         })
     return filas
 
@@ -471,8 +521,44 @@ def activos_page(request: Request, user=Depends(get_current_admin), db: Session 
         "request": request, "user": user, "filas": filas,
         "pisos": sorted({f["piso"] for f in filas if f["piso"]}),
         "tipos": sorted({f["tipo"] for f in filas if f["tipo"]}),
-        "estados": ESTADOS_ACTIVO,
+        "estados": ESTADOS_ACTIVO, "categorias": CATEGORIAS_ACTIVO,
     })
+
+
+@router.post("/admin/activos/nuevo")
+def activo_crear_general(
+    request: Request,
+    nombre: str = Form(...), categoria: str = Form(""), ubicacion: str = Form(""), responsable: str = Form(""),
+    placa_inventario: str = Form(""), notas: str = Form(""), fotos: list[UploadFile] = File(None),
+    user=Depends(get_current_admin), db: Session = Depends(get_db),
+):
+    if not user:
+        return redirect("/login")
+    activo = models.ActivoGeneral(
+        nombre=nombre.strip(), categoria=categoria.strip() or None, ubicacion=ubicacion.strip() or None,
+        responsable=responsable.strip() or None, notas=notas.strip() or None,
+        creado_por=user.username, fecha_creacion=ahora(),
+    )
+    db.add(activo)
+    db.flush()
+    equipo_id = f"ag-{activo.id}"
+    db.add(models.ActivoFicha(equipo_id=equipo_id, placa_inventario=placa_inventario.strip() or None, estado="Activo"))
+    guardar_fotos(db, equipo_id, fotos, "", user.username)
+    db.commit()
+    if "application/json" in (request.headers.get("accept") or ""):
+        return {"status": "ok", "id": equipo_id}
+    return redirect(f"/admin/activos/{equipo_id}")
+
+
+@router.get("/admin/activos/foto/{foto_id}")
+def activo_ver_foto(foto_id: int, user=Depends(get_current_admin), db: Session = Depends(get_db)):
+    if not user:
+        return redirect("/login")
+    foto = db.get(models.ActivoFoto, foto_id)
+    if not foto:
+        raise HTTPException(status_code=404)
+    return Response(content=foto.archivo_bytes, media_type=foto.tipo_contenido or "image/jpeg",
+                    headers={"Cache-Control": "private, max-age=86400"})
 
 
 @router.get("/admin/activos/exportar")
@@ -489,7 +575,7 @@ def activos_exportar(user=Depends(get_current_admin), db: Session = Depends(get_
         ("Hardware", "hardware"), ("Serial", "serial"), ("Placa inventario", "placa"), ("Estado", "estado"),
         ("Garantía hasta", "garantia_hasta"), ("Último mantenimiento", "ultimo_mantenimiento"),
         ("Tipo último mant.", "ultimo_mantenimiento_tipo"), ("N.º mantenimientos", "total_mantenimientos"),
-        ("Programas registrados", "total_software"), ("Estado respaldo", "respaldo"),
+        ("Programas registrados", "total_software"), ("Estado respaldo", "respaldo"), ("Fotos", "fotos"),
     ]
     ws.append([c[0] for c in columnas])
     _estilo_encabezado(ws)
@@ -544,21 +630,76 @@ def _autoajustar(ws):
 def activo_detalle(request: Request, equipo_id: str, user=Depends(get_current_admin), db: Session = Depends(get_db)):
     if not user:
         return redirect("/login")
-    equipo = next((e for e in cargar_equipos(db) if e.get("id") == equipo_id), None)
+    equipo = next((e for e in cargar_activos(db) if e.get("id") == equipo_id), None)
     if not equipo:
         raise HTTPException(status_code=404, detail="Equipo no encontrado")
     ficha = db.query(models.ActivoFicha).filter(models.ActivoFicha.equipo_id == equipo_id).first()
+    fotos = db.query(models.ActivoFoto.id, models.ActivoFoto.descripcion, models.ActivoFoto.fecha_subida,
+                     models.ActivoFoto.subido_por, models.ActivoFoto.tamano) \
+        .filter(models.ActivoFoto.equipo_id == equipo_id).order_by(models.ActivoFoto.id).all()
     mantenimientos = db.query(models.ActivoMantenimiento).filter(models.ActivoMantenimiento.equipo_id == equipo_id) \
         .order_by(models.ActivoMantenimiento.fecha.desc(), models.ActivoMantenimiento.id.desc()).all()
     software = db.query(models.ActivoSoftware).filter(models.ActivoSoftware.equipo_id == equipo_id) \
         .order_by(models.ActivoSoftware.fecha.desc(), models.ActivoSoftware.id.desc()).all()
     estacion = db.query(models.RespaldoEstacion).filter(models.RespaldoEstacion.equipo_id == equipo_id).first()
     return templates.TemplateResponse(request=request, name="ti_activo_detalle.html", context={
-        "request": request, "user": user, "equipo": equipo, "ficha": ficha,
+        "request": request, "user": user, "equipo": equipo, "ficha": ficha, "fotos": fotos,
         "mantenimientos": mantenimientos, "software": software,
         "respaldo": resumen_estacion(estacion) if estacion else None,
-        "estados": ESTADOS_ACTIVO, "hoy": hoy(), "hace_cuanto": hace_cuanto, "tamano_legible": tamano_legible,
+        "estados": ESTADOS_ACTIVO, "categorias": CATEGORIAS_ACTIVO,
+        "hoy": hoy(), "hace_cuanto": hace_cuanto, "tamano_legible": tamano_legible,
     })
+
+
+@router.post("/admin/activos/{equipo_id}/fotos")
+def activo_subir_fotos(
+    equipo_id: str, request: Request, fotos: list[UploadFile] = File(...), descripcion: str = Form(""),
+    user=Depends(get_current_admin), db: Session = Depends(get_db),
+):
+    if not user:
+        return redirect("/login")
+    if not any(e.get("id") == equipo_id for e in cargar_activos(db)):
+        raise HTTPException(status_code=404, detail="Equipo no encontrado")
+    guardadas = guardar_fotos(db, equipo_id, fotos, descripcion, user.username)
+    db.commit()
+    if "application/json" in (request.headers.get("accept") or ""):
+        return {"status": "ok", "guardadas": guardadas}
+    return redirect(f"/admin/activos/{equipo_id}#fotos")
+
+
+@router.post("/admin/activos/{equipo_id}/general")
+def activo_editar_general(
+    equipo_id: str,
+    nombre: str = Form(...), categoria: str = Form(""), ubicacion: str = Form(""), responsable: str = Form(""),
+    notas: str = Form(""), user=Depends(get_current_admin), db: Session = Depends(get_db),
+):
+    if not user:
+        return redirect("/login")
+    activo = db.get(models.ActivoGeneral, id_general(equipo_id) or 0)
+    if not activo:
+        raise HTTPException(status_code=404)
+    activo.nombre = nombre.strip()
+    activo.categoria = categoria.strip() or None
+    activo.ubicacion = ubicacion.strip() or None
+    activo.responsable = responsable.strip() or None
+    activo.notas = notas.strip() or None
+    db.commit()
+    return redirect(f"/admin/activos/{equipo_id}")
+
+
+@router.post("/admin/activos/{equipo_id}/eliminar")
+def activo_eliminar_general(equipo_id: str, user=Depends(get_current_admin), db: Session = Depends(get_db)):
+    """Solo para activos generales; los equipos de red se eliminan en Administración de Equipos."""
+    if not user:
+        return redirect("/login")
+    activo = db.get(models.ActivoGeneral, id_general(equipo_id) or 0)
+    if not activo:
+        raise HTTPException(status_code=404)
+    for modelo in (models.ActivoFicha, models.ActivoFoto, models.ActivoMantenimiento, models.ActivoSoftware):
+        db.query(modelo).filter(modelo.equipo_id == equipo_id).delete(synchronize_session=False)
+    db.delete(activo)
+    db.commit()
+    return redirect("/admin/activos")
 
 
 @router.post("/admin/activos/{equipo_id}/ficha")
@@ -627,7 +768,8 @@ def activo_agregar_software(
 def activo_eliminar_registro(clase: str, registro_id: int, user=Depends(get_current_admin), db: Session = Depends(get_db)):
     if not user:
         return redirect("/login")
-    modelo = {"mantenimiento": models.ActivoMantenimiento, "software": models.ActivoSoftware}.get(clase)
+    modelo = {"mantenimiento": models.ActivoMantenimiento, "software": models.ActivoSoftware,
+              "foto": models.ActivoFoto}.get(clase)
     if not modelo:
         raise HTTPException(status_code=404)
     registro = db.get(modelo, registro_id)

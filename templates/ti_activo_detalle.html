@@ -10,9 +10,9 @@
     <div class="bg-white rounded-3xl shadow-lg shadow-indigo-100/50 border border-indigo-50 p-6 sm:p-8">
         <div class="flex flex-col md:flex-row md:items-start justify-between gap-4">
             <div>
-                <div class="text-xs font-bold uppercase tracking-wider text-indigo-500">Hoja de vida del equipo</div>
+                <div class="text-xs font-bold uppercase tracking-wider text-indigo-500">Hoja de vida del {{ 'activo' if equipo.general else 'equipo' }}</div>
                 <h2 class="text-3xl font-extrabold text-slate-800 tracking-tight mt-1">{{ equipo.nombre }}</h2>
-                <p class="text-sm text-slate-500 mt-1">{{ equipo.tipo }} · {{ equipo.piso }} · {{ equipo.usuario }}{% if equipo.cargo %} ({{ equipo.cargo }}){% endif %}</p>
+                <p class="text-sm text-slate-500 mt-1">{{ [equipo.tipo, equipo.piso, equipo.usuario] | select | join(' · ') }}{% if equipo.cargo %} ({{ equipo.cargo }}){% endif %}{% if ficha and ficha.placa_inventario %} · Activo N.º {{ ficha.placa_inventario }}{% endif %}</p>
             </div>
             {% if respaldo %}
             <a href="/admin/respaldos" class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm hover:bg-slate-100">
@@ -26,6 +26,22 @@
             {% endif %}
         </div>
 
+        {% if equipo.general %}
+        <form action="/admin/activos/{{ equipo.id }}/general" method="POST" class="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-6">
+            <label class="text-xs font-bold text-slate-500">Nombre<input name="nombre" value="{{ equipo.nombre }}" class="{{ campo }} mt-1" required></label>
+            <label class="text-xs font-bold text-slate-500">Categoría
+                <input name="categoria" list="categorias-activo" value="{{ equipo.tipo if equipo.tipo != 'Activo general' else '' }}" class="{{ campo }} mt-1">
+            </label>
+            <label class="text-xs font-bold text-slate-500">Ubicación<input name="ubicacion" value="{{ equipo.piso }}" placeholder="Piso, área…" class="{{ campo }} mt-1"></label>
+            <label class="text-xs font-bold text-slate-500">Responsable<input name="responsable" value="{{ equipo.usuario }}" class="{{ campo }} mt-1"></label>
+            <label class="text-xs font-bold text-slate-500 sm:col-span-2 lg:col-span-3">Notas<input name="notas" value="{{ equipo.notas }}" class="{{ campo }} mt-1"></label>
+            <div class="flex items-end"><button class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 rounded-xl text-sm">Guardar datos</button></div>
+            <datalist id="categorias-activo">{% for c in categorias %}<option value="{{ c }}">{% endfor %}</datalist>
+        </form>
+        <form action="/admin/activos/{{ equipo.id }}/eliminar" method="POST" class="mt-3 text-right" onsubmit="return confirm('¿Eliminar este activo con sus fotos y registros? No se puede deshacer.');">
+            <button class="text-xs text-rose-500 hover:underline">Eliminar activo</button>
+        </form>
+        {% else %}
         <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-6 text-sm">
             {% for etiqueta, valor in [('Hostname', equipo.hostname), ('IP', equipo.ip), ('MAC', equipo.mac), ('Marca', equipo.marca), ('Sistema operativo', equipo.so), ('Hardware', equipo.hardware), ('Conectado a', equipo.conectado), ('Enlace', equipo.enlace_tipo)] %}
             <div class="rounded-xl bg-slate-50 border border-slate-100 px-3 py-2">
@@ -35,6 +51,31 @@
             {% endfor %}
         </div>
         <p class="text-xs text-slate-400 mt-3">Estos datos de red se editan en <a href="/admin/equipos" class="text-indigo-600 hover:underline">Administración de Equipos</a>.</p>
+        {% endif %}
+    </div>
+
+    <div id="fotos" class="bg-white rounded-3xl shadow-lg shadow-indigo-100/50 border border-indigo-50 p-6 sm:p-8">
+        <h3 class="text-xl font-extrabold text-slate-800 mb-4">Fotos</h3>
+        <form action="/admin/activos/{{ equipo.id }}/fotos" method="POST" enctype="multipart/form-data" class="grid sm:grid-cols-2 lg:grid-cols-6 gap-3 bg-slate-50 border border-slate-200 rounded-2xl p-4 mb-5">
+            <input type="file" name="fotos" accept="image/*" multiple required class="{{ campo }} bg-white lg:col-span-3">
+            <input name="descripcion" placeholder="Descripción (opcional)" class="{{ campo }} lg:col-span-2">
+            <button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-4 py-2 rounded-xl text-sm">Subir</button>
+        </form>
+        {% if fotos %}
+        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+            {% for f in fotos %}
+            <figure class="rounded-2xl border border-slate-100 overflow-hidden bg-slate-50">
+                <a href="/admin/activos/foto/{{ f.id }}" target="_blank"><img src="/admin/activos/foto/{{ f.id }}" alt="{{ f.descripcion or equipo.nombre }}" loading="lazy" class="w-full h-40 object-cover"></a>
+                <figcaption class="px-3 py-2 text-xs text-slate-500 flex justify-between gap-2">
+                    <span class="truncate">{{ f.descripcion or (f.fecha_subida.strftime('%d/%m/%Y') if f.fecha_subida else '') }}</span>
+                    <form action="/admin/activos/registro/foto/{{ f.id }}/delete" method="POST" onsubmit="return confirm('¿Eliminar esta foto?');"><button class="text-rose-500 hover:underline">Eliminar</button></form>
+                </figcaption>
+            </figure>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-sm text-slate-400">Sin fotos todavía.</p>
+        {% endif %}
     </div>
 
     <div class="bg-white rounded-3xl shadow-lg shadow-indigo-100/50 border border-indigo-50 p-6 sm:p-8">
