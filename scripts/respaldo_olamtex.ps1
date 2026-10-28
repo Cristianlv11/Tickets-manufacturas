@@ -5,6 +5,8 @@
     1. Ajuste la sección CONFIGURACIÓN (carpetas a respaldar y destinos).
     2. Pruebe una vez:            powershell -ExecutionPolicy Bypass -File .\respaldo_olamtex.ps1
     3. Programe la tarea diaria:  powershell -ExecutionPolicy Bypass -File .\respaldo_olamtex.ps1 -Instalar -Hora 18:30
+       o semanal (copia fría):    powershell -ExecutionPolicy Bypass -File .\copia_fria.ps1 -Instalar -Dia Friday -Hora 20:00
+       Cada copia del script con otro nombre de archivo se instala como una tarea aparte.
 
   Modo "Copiar":    copia las carpetas al destino con robocopy (sin borrar nada en el destino) y reporta.
   Modo "Verificar": no copia; solo revisa que en el destino haya archivos recientes (útil si otra
@@ -13,6 +15,7 @@
 param(
     [switch]$Instalar,
     [string]$Hora = "18:30",
+    [string]$Dia = "",           # ej. "Friday": tarea semanal en vez de diaria
     [switch]$Desinstalar
 )
 
@@ -38,7 +41,8 @@ $ErrorActionPreference = "Stop"
 $CarpetaLog = Join-Path $env:ProgramData "RespaldoOlamtex"
 New-Item -ItemType Directory -Force -Path $CarpetaLog | Out-Null
 $LogGeneral = Join-Path $CarpetaLog ("respaldo_{0:yyyy-MM}.log" -f (Get-Date))
-$NombreTarea = "Respaldo Olamtex"
+$NombreScript = [IO.Path]::GetFileNameWithoutExtension($PSCommandPath)
+$NombreTarea = if ($NombreScript -eq "respaldo_olamtex") { "Respaldo Olamtex" } else { "Respaldo Olamtex ($NombreScript)" }
 
 function Escribir-Log([string]$texto) {
     $linea = "{0:yyyy-MM-dd HH:mm:ss}  {1}" -f (Get-Date), $texto
@@ -53,18 +57,19 @@ if ($Desinstalar) {
 }
 
 if ($Instalar) {
-    $destinoScript = Join-Path $CarpetaLog "respaldo_olamtex.ps1"
+    $destinoScript = Join-Path $CarpetaLog (Split-Path $PSCommandPath -Leaf)
     if ($PSCommandPath -ne $destinoScript) { Copy-Item -Path $PSCommandPath -Destination $destinoScript -Force }
     $accion  = New-ScheduledTaskAction -Execute "powershell.exe" `
                -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$destinoScript`""
-    $disparo = New-ScheduledTaskTrigger -Daily -At $Hora
+    $disparo = if ($Dia) { New-ScheduledTaskTrigger -Weekly -DaysOfWeek $Dia -At $Hora } else { New-ScheduledTaskTrigger -Daily -At $Hora }
+    $frecuencia = if ($Dia) { "cada $Dia" } else { "todos los días" }
     $ajustes = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries `
                -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Hours 6)
     $usuario = "$env:USERDOMAIN\$env:USERNAME"
     $principal = New-ScheduledTaskPrincipal -UserId $usuario -LogonType Interactive -RunLevel Limited
     Register-ScheduledTask -TaskName $NombreTarea -Action $accion -Trigger $disparo -Settings $ajustes `
-        -Principal $principal -Description "Copia de seguridad diaria con reporte a la app de Tickets Olamtex" -Force | Out-Null
-    Write-Host "Tarea '$NombreTarea' programada todos los días a las $Hora para $usuario."
+        -Principal $principal -Description "Copia de seguridad ($frecuencia) con reporte a la app de Tickets Olamtex" -Force | Out-Null
+    Write-Host "Tarea '$NombreTarea' programada $frecuencia a las $Hora para $usuario."
     Write-Host "Script instalado en: $destinoScript"
     Write-Host "Si la PC está apagada a esa hora, se ejecuta apenas se encienda."
     exit 0
