@@ -31,7 +31,11 @@ if (-not $admin) {
     exit 1
 }
 
-# 2. Descargar e instalar
+# 2. Descargar e instalar (si ya está instalado, solo se registra; no se reinstala)
+if (-not $SoloRegistrar -and (Test-Path $Exe)) {
+    Write-Host "RustDesk ya está instalado en este equipo; se omite la instalación." -ForegroundColor Yellow
+    $SoloRegistrar = $true
+}
 if (-not $SoloRegistrar) {
     Paso "Buscando el instalador oficial de RustDesk (GitHub)..."
     if ($Version) {
@@ -46,10 +50,15 @@ if (-not $SoloRegistrar) {
     Invoke-WebRequest $asset.browser_download_url -OutFile $tmp -UseBasicParsing
 
     Paso "Instalando RustDesk $($rel.tag_name)..."
-    Start-Process -FilePath $tmp -ArgumentList "--silent-install" -Wait
-    for ($i = 0; $i -lt 30 -and -not (Test-Path $Exe); $i++) { Start-Sleep -Seconds 2 }
+    # SIN -Wait: el instalador deja RustDesk abierto y -Wait se quedaría esperando para siempre.
+    # Se lanza y se espera a que aparezca el ejecutable instalado.
+    Start-Process -FilePath $tmp -ArgumentList "--silent-install"
+    for ($i = 0; $i -lt 60 -and -not (Test-Path $Exe); $i++) { Start-Sleep -Seconds 2 }
     if (-not (Test-Path $Exe)) { throw "La instalación no terminó (no existe $Exe)." }
     Start-Sleep -Seconds 15   # deja arrancar el servicio
+    # Cierra la ventana de RustDesk que deja abierta el instalador (el servicio sigue corriendo)
+    Get-Process -Name "rustdesk" -ErrorAction SilentlyContinue |
+        Where-Object { $_.MainWindowTitle } | Stop-Process -Force -ErrorAction SilentlyContinue
     Remove-Item $tmp -Force -ErrorAction SilentlyContinue
 }
 if (-not (Test-Path $Exe)) { throw "RustDesk no está instalado en este equipo." }
